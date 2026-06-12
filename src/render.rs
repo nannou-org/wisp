@@ -39,9 +39,12 @@ pub struct GpuWisp {
     pub shader: Handle<Shader>,
 }
 
-/// One cached pipeline per pass.
-#[derive(Component, Deref, DerefMut, Default)]
-pub struct WispPipelineIds(Vec<WispPassPipelineId>);
+/// One cached pipeline per pass, stamped with the asset they were built for.
+#[derive(Component)]
+pub struct WispPipelineIds {
+    asset: AssetId<Wisp>,
+    ids: Vec<WispPassPipelineId>,
+}
 
 #[derive(Clone, Copy, Debug)]
 pub enum WispPassPipelineId {
@@ -58,22 +61,46 @@ struct WispDummyStorage(HashMap<TextureFormat, TextureView>);
 /// Per-view uniform buffers, rewritten each frame.
 #[derive(Component)]
 pub struct WispUniforms {
+    asset: AssetId<Wisp>,
     /// One aligned globals chunk per pass, indexed via `globals_offsets`.
     globals: Option<Buffer>,
     globals_offsets: Vec<u32>,
     params: Option<Buffer>,
 }
 
-/// Per-view bind groups: for each pass, one bind group per group index.
+/// Per-view bind groups and attachment snapshots, one entry per pass.
 ///
 /// Bind groups are per-pass because pass-target bindings differ: a pass reading a
 /// target written *earlier* this frame sees the fresh contents, while reading its
 /// own target (or a *later* pass's) sees the previous frame's.
+///
+/// The attachment each pass writes is snapshotted *here*, from the same
+/// [`WispPassTargets`] the bind groups were built from, so the sampled and
+/// attached images can never disagree - even if the component outlives its
+/// frame (e.g. while a newly selected shader is still loading). The render
+/// system additionally checks `asset` against the view's current handle so
+/// components built for another shader are never mixed.
 #[derive(Component)]
 pub struct WispBindGroups {
-    passes: Vec<Vec<BindGroup>>,
+    asset: AssetId<Wisp>,
+    passes: Vec<PassBindings>,
     /// The group bound with a per-pass dynamic offset (the globals group).
     dynamic_group: Option<usize>,
+}
+
+struct PassBindings {
+    groups: Vec<BindGroup>,
+    attachment: PassAttachment,
+}
+
+/// Where a pass writes, captured alongside its bind groups.
+enum PassAttachment {
+    /// The final pass renders to the camera's view target.
+    View,
+    /// An intermediate fragment pass renders to its target's write image.
+    Target { image: Handle<Image>, clear: bool },
+    /// A compute pass writes through its storage binding.
+    Compute { dispatch: [u32; 3] },
 }
 
 #[derive(Resource)]
@@ -252,8 +279,8 @@ fn queue_wisp(
     wisps: Res<RenderAssets<GpuWisp>>,
     views: Query<(Entity, &WispHandle, &Msaa, &ViewTarget)>,
 ) {
-    for (entity, wisp, msaa, view_target) in views.iter() {
-        let Some(wisp) = wisps.get(&**wisp) else {
+    for (entity, handle, msaa, view_target) in views.iter() {
+        let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
         let ids: Vec<WispPassPipelineId> = wisp
@@ -289,7 +316,10 @@ fn queue_wisp(
                 }
             })
             .collect();
-        commands.entity(entity).insert(WispPipelineIds(ids));
+        commands.entity(entity).insert(WispPipelineIds {
+            asset: handle.id(),
+            ids,
+        });
     }
 }
 
@@ -306,8 +336,8 @@ fn prepare_wisp_uniforms(
         Option<&WispPassTargets>,
     )>,
 ) {
-    for (entity, wisp, inputs, view_target, pass_targets) in views.iter() {
-        let Some(wisp) = wisps.get(&**wisp) else {
+    for (entity, handle, inputs, view_target, pass_targets) in views.iter() {
+        let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
         let schema = &wisp.schema;
@@ -350,6 +380,7 @@ fn prepare_wisp_uniforms(
         });
 
         commands.entity(entity).insert(WispUniforms {
+            asset: handle.id(),
             globals,
             globals_offsets,
             params,
@@ -375,8 +406,8 @@ fn prepare_wisp_bind_groups(
         Option<&WispPassTargets>,
     )>,
 ) {
-    for (entity, wisp, inputs, uniforms, pass_targets) in views.iter() {
-        let Some(wisp) = wisps.get(&**wisp) else {
+    for (entity, handle, inputs, uniforms, pass_targets) in views.iter() {
+        let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
         let Some(dummy) = gpu_images.get(&Handle::<Image>::default()) else {
@@ -390,7 +421,7 @@ fn prepare_wisp_bind_groups(
             }
         }
         let mut dynamic_group = None;
-        let passes: Option<Vec<Vec<BindGroup>>> = (0..wisp.schema.passes.len())
+        let passes: Option<Vec<PassBindings>> = (0..wisp.schema.passes.len())
             .map(|pass_index| {
                 create_pass_bind_groups(
                     &wisp.schema,
@@ -412,6 +443,7 @@ fn prepare_wisp_bind_groups(
             continue;
         };
         commands.entity(entity).insert(WispBindGroups {
+            asset: handle.id(),
             passes,
             dynamic_group,
         });
@@ -432,7 +464,27 @@ fn create_pass_bind_groups(
     pipeline_cache: &PipelineCache,
     render_device: &RenderDevice,
     dynamic_group: &mut Option<usize>,
-) -> Option<Vec<BindGroup>> {
+) -> Option<PassBindings> {
+    // Snapshot where the pass writes alongside its bind groups, so the
+    // attachment and the sampled images always come from the same frame's
+    // `WispPassTargets`. A targeted pass whose image is not built yet aborts
+    // the whole set - rendering it to the view instead would be wrong.
+    let pass = &schema.passes[pass_index];
+    let target = pass_targets.and_then(|targets| targets.0.get(pass_index)?.as_ref());
+    let attachment = match (pass.stage, target) {
+        (PassStage::Compute, target) => PassAttachment::Compute {
+            dispatch: target?.dispatch?,
+        },
+        (PassStage::Fragment, Some(target)) => PassAttachment::Target {
+            image: target.write().clone(),
+            clear: target.clear,
+        },
+        (PassStage::Fragment, None) => match pass.target.is_some() {
+            true => return None,
+            false => PassAttachment::View,
+        },
+    };
+
     let descriptors = bind_group_layout_descriptors(&schema.bindings);
     let mut groups = Vec::with_capacity(descriptors.len());
     for (group_index, descriptor) in descriptors.iter().enumerate() {
@@ -479,7 +531,7 @@ fn create_pass_bind_groups(
         let layout = pipeline_cache.get_bind_group_layout(descriptor);
         groups.push(render_device.create_bind_group("wisp_bind_group", &layout, &entries));
     }
-    Some(groups)
+    Some(PassBindings { groups, attachment })
 }
 
 /// The image handle bound for a texture binding from the given pass, if any.
@@ -593,7 +645,7 @@ fn sync_pipeline_errors(
         let Some(wisp) = wisps.get(&**wisp) else {
             continue;
         };
-        let passes = wisp.schema.passes.iter().zip(pipeline_ids.iter());
+        let passes = wisp.schema.passes.iter().zip(pipeline_ids.ids.iter());
         for (pass, pipeline_id) in passes {
             let state = match pipeline_id {
                 WispPassPipelineId::Render(id) => pipeline_cache.get_render_pipeline_state(*id),
@@ -620,16 +672,29 @@ fn sync_pipeline_errors(
 fn wisp_render(
     view: ViewQuery<(
         &ViewTarget,
+        &WispHandle,
         &WispBindGroups,
         &WispPipelineIds,
         &WispUniforms,
-        Option<&WispPassTargets>,
     )>,
     mut ctx: RenderContext,
     pipeline_cache: Res<PipelineCache>,
     gpu_images: Res<RenderAssets<GpuImage>>,
 ) {
-    let (view_target, bind_groups, pipeline_ids, uniforms, pass_targets) = view.into_inner();
+    let (view_target, handle, bind_groups, pipeline_ids, uniforms) = view.into_inner();
+    // Render only a coherent generation: every component must have been built
+    // for the shader the view currently points at. While a newly selected
+    // shader is still loading/compiling, components from the previous one
+    // linger - mixing them (e.g. old bind groups with new pass targets) binds
+    // images inconsistently and trips wgpu's usage validation.
+    let asset = handle.id();
+    if bind_groups.asset != asset
+        || pipeline_ids.asset != asset
+        || uniforms.asset != asset
+        || bind_groups.passes.len() != pipeline_ids.ids.len()
+    {
+        return;
+    }
     // All-or-nothing: rendering a partial pass chain (e.g. while pipelines
     // recompile after a hot reload) would feed stale targets downstream.
     enum Ready<'a> {
@@ -637,6 +702,7 @@ fn wisp_render(
         Compute(&'a ComputePipeline),
     }
     let pipelines: Option<Vec<Ready>> = pipeline_ids
+        .ids
         .iter()
         .map(|pipeline_id| match pipeline_id {
             WispPassPipelineId::Render(id) => {
@@ -651,9 +717,10 @@ fn wisp_render(
         return;
     };
     for (pass_index, pipeline) in pipelines.into_iter().enumerate() {
-        let Some(groups) = bind_groups.passes.get(pass_index) else {
+        let Some(pass) = bind_groups.passes.get(pass_index) else {
             continue;
         };
+        let groups = &pass.groups;
         let offsets: Vec<(usize, Option<u32>)> = (0..groups.len())
             .map(|group_index| {
                 let offset = match bind_groups.dynamic_group {
@@ -665,10 +732,9 @@ fn wisp_render(
                 (group_index, offset)
             })
             .collect();
-        let target = pass_targets.and_then(|targets| targets.0.get(pass_index)?.as_ref());
         match pipeline {
             Ready::Compute(pipeline) => {
-                let Some(dispatch) = target.and_then(|target| target.dispatch) else {
+                let PassAttachment::Compute { dispatch } = pass.attachment else {
                     continue;
                 };
                 let mut compute_pass =
@@ -691,17 +757,18 @@ fn wisp_render(
                 compute_pass.dispatch_workgroups(x, y, z);
             }
             Ready::Render(pipeline) => {
-                let color_attachment = match target {
-                    None => view_target.get_color_attachment(),
-                    Some(target) => {
-                        let Some(gpu_image) = gpu_images.get(target.write()) else {
+                let color_attachment = match &pass.attachment {
+                    PassAttachment::Compute { .. } => continue,
+                    PassAttachment::View => view_target.get_color_attachment(),
+                    PassAttachment::Target { image, clear } => {
+                        let Some(gpu_image) = gpu_images.get(image) else {
                             continue;
                         };
                         RenderPassColorAttachment {
                             view: &gpu_image.texture_view,
                             resolve_target: None,
                             ops: Operations {
-                                load: match target.clear {
+                                load: match clear {
                                     true => LoadOp::Clear(default()),
                                     false => LoadOp::Load,
                                 },
