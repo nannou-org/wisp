@@ -1,10 +1,8 @@
-# bevy_wisp 🜉
+# wisp 🜉
 
-[![crates.io](https://img.shields.io/crates/v/bevy_wisp.svg)](https://crates.io/crates/bevy_wisp)
-[![docs.rs](https://docs.rs/bevy_wisp/badge.svg)](https://docs.rs/bevy_wisp)
-[![CI](https://github.com/nannou-org/wisp/actions/workflows/ci.yml/badge.svg)](https://github.com/nannou-org/wisp/actions/workflows/ci.yml)
+[![crates.io](https://img.shields.io/crates/v/bevy_wisp.svg)](https://crates.io/crates/bevy_wisp) [![docs.rs](https://docs.rs/bevy_wisp/badge.svg)](https://docs.rs/bevy_wisp) [![CI](https://github.com/nannou-org/wisp/actions/workflows/ci.yml/badge.svg)](https://github.com/nannou-org/wisp/actions/workflows/ci.yml)
 
-Interactive WGSL shaders for [Bevy](https://bevy.org).
+The WGSL Interactive Shader Project, based on [Bevy](https://bevy.org), inspired by [ISF](https://isf.video/).
 
 A *wisp* is a plain `.wgsl` file describing a (possibly multi-pass) fullscreen
 shader. There is no external metadata: the shader's own interface is reflected
@@ -181,11 +179,12 @@ Wisp grew out of [nannou](https://nannou.cc) as the successor to `nannou_isf`
 and the [Interactive Shader Format](https://isf.video): the same idea -
 shaders as portable, introspectable assets with tweakable inputs and
 multi-pass rendering - rebuilt WGSL-first with the interface reflected from
-the shader itself instead of a JSON comment block. Differences to be aware of:
-passes are entry points rather than `PASSES` entries, float targets are
-`rgba16float` (not `rgba32float`), there is no `event` input type (use
-`@bool`), and audio waveforms are signed. Support for loading ISF files via a
-GLSL-to-WGSL translation layer is planned.
+the shader itself instead of a JSON comment block.
+
+Differences to be aware of: passes are entry points rather than `PASSES`
+entries, float targets are `rgba16float` (not `rgba32float`), there is no
+`event` input type (use `@bool`), and audio waveforms are signed. Ideally, one
+day we'd have support for loading ISF files via a GLSL-to-WGSL translation.
 
 ## License
 
