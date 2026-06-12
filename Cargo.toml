@@ -1,0 +1,22 @@
+[package]
+name = "nannou_wisp"
+version.workspace = true
+description = "Wisp - interactive, reflected WGSL shaders for nannou, built on Bevy."
+readme = "README.md"
+repository.workspace = true
+homepage.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+bevy = { workspace = true, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_render",
+    "bevy_window",
+] }
+bytemuck.workspace = true
+evalexpr.workspace = true
+naga.workspace = true
+thiserror.workspace = true
