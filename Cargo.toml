@@ -16,7 +16,13 @@ bevy = { workspace = true, features = [
     "bevy_render",
     "bevy_window",
 ] }
+bevy_egui = { workspace = true, optional = true }
 bytemuck.workspace = true
 evalexpr.workspace = true
 naga.workspace = true
 thiserror.workspace = true
+
+[features]
+# Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
+# `EguiPlugin` to be added to the app (nannou's `egui` feature does this).
+ui = ["dep:bevy_egui"]

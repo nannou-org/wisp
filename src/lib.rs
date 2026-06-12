@@ -52,6 +52,8 @@ pub mod reflect;
 pub mod render;
 pub mod schema;
 pub mod targets;
+#[cfg(feature = "ui")]
+pub mod ui;
 
 pub mod prelude {
     pub use crate::NannouWispPlugin;
@@ -79,6 +81,13 @@ impl Plugin for NannouWispPlugin {
                     error::collect_load_errors,
                 ),
             );
+        // The panel needs `EguiPlugin`; stay inert (rather than panicking on the
+        // missing resource) when the user hasn't added it.
+        #[cfg(feature = "ui")]
+        app.add_systems(
+            Update,
+            ui::wisp_ui.run_if(resource_exists::<bevy_egui::EguiUserTextures>),
+        );
     }
 }
 
