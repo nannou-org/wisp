@@ -357,6 +357,8 @@ fn prepare_wisp_uniforms(
     }
 }
 
+// Bevy systems legitimately take one parameter per resource/query.
+#[allow(clippy::too_many_arguments)]
 fn prepare_wisp_bind_groups(
     mut commands: Commands,
     render_device: Res<RenderDevice>,

@@ -55,7 +55,7 @@ fn checkerboard(size: u32, cell: u32) -> Image {
     let mut data = Vec::with_capacity((size * size * 4) as usize);
     for y in 0..size {
         for x in 0..size {
-            let on = ((x / cell) + (y / cell)) % 2 == 0;
+            let on = ((x / cell) + (y / cell)).is_multiple_of(2);
             let r = if on { 230u8 } else { 30 };
             let g = (x * 255 / size) as u8;
             let b = (y * 255 / size) as u8;

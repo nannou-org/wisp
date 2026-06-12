@@ -18,7 +18,11 @@ fn main() {
                 }),
                 ..default()
             }),
-            // Wisp's panel runs in `Update`, which needs egui's single-pass mode.
+            // Wisp's panel runs in `Update`, which needs egui's single-pass
+            // mode. bevy_egui deprecates opting out of multi-pass; running the
+            // panel in `EguiPrimaryContextPass` instead is tracked for when the
+            // single-pass mode is removed.
+            #[allow(deprecated)]
             bevy_egui::EguiPlugin {
                 enable_multipass_for_primary_context: false,
                 ..default()

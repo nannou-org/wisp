@@ -58,10 +58,10 @@ pub fn inputs_from_schema(schema: &WispSchema) -> WispInputs {
 pub fn rematch_inputs(old: &WispInputs, schema: &WispSchema) -> WispInputs {
     let mut inputs = inputs_from_schema(schema);
     for (name, value) in inputs.0.iter_mut() {
-        if let Some(prev) = old.0.get(name) {
-            if prev.same_kind(value) {
-                *value = prev.clone();
-            }
+        if let Some(prev) = old.0.get(name)
+            && prev.same_kind(value)
+        {
+            *value = prev.clone();
         }
     }
     inputs

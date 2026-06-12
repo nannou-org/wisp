@@ -76,7 +76,7 @@ impl WispAudio {
     /// Hann-windowed linear FFT magnitudes, `bins` per channel, one row per
     /// channel. The window is `2 * bins` samples.
     fn fft(&mut self, bins: usize) -> Vec<f32> {
-        let window = (bins * 2).max(2).min(RING_CAPACITY);
+        let window = (bins * 2).clamp(2, RING_CAPACITY);
         let fft = self
             .ffts
             .entry(window)

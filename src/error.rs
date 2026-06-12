@@ -44,10 +44,10 @@ pub(crate) fn collect_load_errors(
         }
     }
     for event in events.read() {
-        if let AssetEvent::LoadedWithDependencies { id } | AssetEvent::Modified { id } = event {
-            if let Some(path) = asset_server.get_path(*id) {
-                errors.load.remove(&path.to_string());
-            }
+        if let AssetEvent::LoadedWithDependencies { id } | AssetEvent::Modified { id } = event
+            && let Some(path) = asset_server.get_path(*id)
+        {
+            errors.load.remove(&path.to_string());
         }
     }
 }
