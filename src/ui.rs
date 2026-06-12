@@ -5,7 +5,7 @@
 //! `@color` and drag rows for vectors. [`WispErrors`] are shown in a collapsible
 //! section so live-coding failures are visible on screen.
 //!
-//! Requires `bevy_egui`'s `EguiPlugin` (added by nannou's `egui` feature; the
+//! Requires `bevy_egui`'s `EguiPlugin` to be added to the app (the
 //! panel is inert without it).
 
 use crate::asset::{Wisp, WispHandle};

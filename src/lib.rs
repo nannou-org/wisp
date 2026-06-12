@@ -1,4 +1,4 @@
-//! Wisp - interactive WGSL shaders for nannou.
+//! Wisp - interactive WGSL shaders for Bevy.
 //!
 //! A *wisp* is a plain `.wgsl` file describing a (possibly multi-pass) fullscreen
 //! shader. There is no external metadata: the shader's own interface is reflected
@@ -28,13 +28,18 @@
 //! }
 //! ```
 //!
-//! Load a wisp with `asset_server.load::<Wisp>("path.wgsl")` and insert a
+//! Add [`WispPlugin`] to the app, load a wisp with
+//! `asset_server.load::<Wisp>("path.wgsl")` and insert a
 //! [`WispHandle`](asset::WispHandle) on a camera; the shader renders wherever the
 //! camera does. Tweak inputs through the camera's [`WispInputs`](inputs::WispInputs)
 //! component.
 //!
 //! See [`schema`] for the full set of conventions and annotations, [`globals`] for
 //! the recognized globals members, and [`asset`] for how loading works.
+//!
+//! Wisp grew out of [nannou](https://nannou.cc)'s `nannou_isf` (an implementation
+//! of the Interactive Shader Format) and is the modern, WGSL-first successor to
+//! that idea.
 
 use crate::asset::{Wisp, WispHandle, WispLoader};
 use crate::error::WispErrors;
@@ -58,7 +63,7 @@ pub mod targets;
 pub mod ui;
 
 pub mod prelude {
-    pub use crate::NannouWispPlugin;
+    pub use crate::WispPlugin;
     pub use crate::asset::{Wisp, WispHandle};
     #[cfg(feature = "audio")]
     pub use crate::audio::WispAudio;
@@ -67,9 +72,9 @@ pub mod prelude {
     pub use crate::schema::WispSchema;
 }
 
-pub struct NannouWispPlugin;
+pub struct WispPlugin;
 
-impl Plugin for NannouWispPlugin {
+impl Plugin for WispPlugin {
     fn build(&self, app: &mut App) {
         app.init_asset::<Wisp>()
             .init_asset_loader::<WispLoader>()

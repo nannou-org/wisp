@@ -1,33 +1,52 @@
 [package]
-name = "nannou_wisp"
-version.workspace = true
-description = "Wisp - interactive, reflected WGSL shaders for nannou, built on Bevy."
+name = "bevy_wisp"
+version = "0.1.0"
+description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
+authors = ["mitchmindtree <mitchell.nordine@gmail.com>"]
+repository = "https://github.com/nannou-org/wisp"
+homepage = "https://github.com/nannou-org/wisp"
 readme = "README.md"
-repository.workspace = true
-homepage.workspace = true
-edition.workspace = true
-license.workspace = true
+keywords = ["bevy", "wgsl", "shader", "live-coding", "creative-coding"]
+categories = ["game-development", "graphics", "rendering"]
+license = "MIT OR Apache-2.0"
+edition = "2024"
 
 [dependencies]
-bevy = { workspace = true, features = [
+# Pinned to the Bevy 0.19 release candidates while awaiting the stable release;
+# the first crates.io release follows Bevy 0.19 stable.
+bevy = { version = "0.19.0-rc.2", default-features = false, features = [
     "bevy_asset",
     "bevy_core_pipeline",
     "bevy_log",
     "bevy_render",
     "bevy_window",
 ] }
-bevy_egui = { workspace = true, optional = true }
-bytemuck.workspace = true
-evalexpr.workspace = true
-half = { workspace = true, optional = true }
-naga.workspace = true
-rustfft = { workspace = true, optional = true }
-thiserror.workspace = true
+bevy_egui = { version = "0.40.0-rc.1", optional = true }
+bytemuck = "1"
+evalexpr = "12"
+half = { version = "2", optional = true }
+# Kept in lockstep with the `naga` used by `bevy_shader`, so that wisp's
+# reflection accepts exactly the WGSL that bevy compiles.
+naga = { version = "29", default-features = false, features = ["wgsl-in"] }
+rustfft = { version = "6", optional = true }
+thiserror = "2"
+
+[dev-dependencies]
+# The examples want windowing, winit and friends.
+bevy = { version = "0.19.0-rc.2" }
 
 [features]
 # Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
 # `WispAudio` resource.
 audio = ["dep:half", "dep:rustfft"]
 # Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
-# `EguiPlugin` to be added to the app (nannou's `egui` feature does this).
+# `EguiPlugin` to be added to the app.
 ui = ["dep:bevy_egui"]
+
+[[example]]
+name = "audio"
+required-features = ["audio"]
+
+[[example]]
+name = "ui"
+required-features = ["ui"]

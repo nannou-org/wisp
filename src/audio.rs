@@ -1,7 +1,7 @@
 //! Audio input textures (feature `audio`).
 //!
 //! Feed sample frames into the [`WispAudio`] resource from any source (a
-//! `nannou_audio` capture stream, a decoded file, synthesis) and wisp keeps the
+//! `cpal` capture stream, a decoded file, synthesis) and wisp keeps the
 //! shader's `@audio`/`@audio_fft` textures up to date each frame:
 //!
 //! - `@audio(samples = ..)` waveform textures hold the most recent samples in

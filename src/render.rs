@@ -579,7 +579,7 @@ fn storage_view<'a>(
 /// Mirror pipeline compilation errors into the main world's [`WispErrors`].
 ///
 /// Runs during extraction (the only point where the render world can reach the
-/// main world), following the pattern of nannou's compute `sync_pipeline_cache`.
+/// main world).
 fn sync_pipeline_errors(
     mut main_world: ResMut<MainWorld>,
     pipeline_cache: Res<PipelineCache>,
