@@ -1,0 +1,13 @@
+[workspace]
+# Hold back crates.io publishing until bevy 0.19 stable lands - release PRs,
+# version bumps, the changelog, git tags and GitHub Releases all still flow.
+# To arm publishing: flip this to `true` and add a CARGO_REGISTRY_TOKEN
+# repository secret (after the first publish, switch to crates.io Trusted
+# Publishing and drop the token).
+publish = false
+changelog_update = true
+git_tag_name = "v{{ version }}"
+git_release_enable = true
+# Checks API compatibility against the latest published release via
+# cargo-semver-checks (skipped automatically while nothing is published).
+semver_check = true
