@@ -51,6 +51,7 @@ pub mod inputs;
 pub mod reflect;
 pub mod render;
 pub mod schema;
+pub mod targets;
 
 pub mod prelude {
     pub use crate::NannouWispPlugin;
@@ -74,6 +75,7 @@ impl Plugin for NannouWispPlugin {
                 (
                     globals::update_frame_globals,
                     sync_wisp_inputs,
+                    targets::update_pass_targets,
                     error::collect_load_errors,
                 ),
             );

@@ -316,6 +316,8 @@ pub enum SchemaError {
          samplers are not supported)"
     )]
     UnsupportedBinding { name: String },
+    #[error("{context}: {err}")]
+    SizeExpr { context: String, err: SizeExprError },
 }
 
 #[derive(Debug, Error)]
@@ -648,6 +650,22 @@ fn passes_from_entry_points(
             None => (None, None),
             Some(annotation) => pass_config(annotation, &context, stage)?,
         };
+        // Catch malformed size expressions at load time rather than at render time.
+        let exprs = target
+            .iter()
+            .flat_map(|t| [t.width.as_deref(), t.height.as_deref()])
+            .chain(
+                dispatch
+                    .iter()
+                    .flat_map(|d| d.iter().map(|e| Some(e.as_str()))),
+            )
+            .flatten();
+        for expr in exprs {
+            eval_size(expr, UVec2::new(1920, 1080)).map_err(|err| SchemaError::SizeExpr {
+                context: context.clone(),
+                err,
+            })?;
+        }
         match (stage, &target) {
             (PassStage::Compute, None) => {
                 return Err(SchemaError::ComputeWithoutTarget {
