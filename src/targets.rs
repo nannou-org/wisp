@@ -7,7 +7,7 @@
 //! writing the next.
 
 use crate::asset::{Wisp, WispHandle};
-use crate::schema::{PassStage, TargetSchema, WispSchema, eval_size};
+use crate::schema::{PassSchema, PassStage, TargetSchema, WispSchema, eval_size};
 use bevy::camera::RenderTarget;
 use bevy::log::warn_once;
 use bevy::prelude::*;
@@ -24,7 +24,10 @@ pub struct WispPassTargets(pub Vec<Option<PassTarget>>);
 pub struct PassTarget {
     pub size: UVec2,
     /// Clear the write image at the start of the pass (non-persistent targets).
+    /// Compute targets are never cleared - the shader overwrites what it covers.
     pub clear: bool,
+    /// Workgroup counts for compute passes (`None` for fragment passes).
+    pub dispatch: Option<[u32; 3]>,
     /// `[a, b]` ping-pong pair for self-feedback passes; otherwise the same
     /// handle twice.
     images: [Handle<Image>; 2],
@@ -110,9 +113,14 @@ fn sync_targets(
         };
         let size = target_size(target, view_size);
         let clear = !target.persistent;
+        let dispatch = match pass.stage {
+            PassStage::Fragment => None,
+            PassStage::Compute => Some(dispatch_size(pass, size)),
+        };
         let up_to_date = slot.as_ref().is_some_and(|t| {
             t.size == size
                 && t.clear == clear
+                && t.dispatch == dispatch
                 && (t.images[0] != t.images[1]) == pass.self_feedback
                 && images
                     .get(&t.images[0])
@@ -152,9 +160,34 @@ fn sync_targets(
         *slot = Some(PassTarget {
             size,
             clear,
+            dispatch,
             images: [first, second],
             flip: false,
         });
+    }
+}
+
+/// A compute pass's workgroup counts: explicit `dispatch = ".."` expressions
+/// evaluated against the *target* size, or derived as `ceil(target / workgroup)`.
+fn dispatch_size(pass: &PassSchema, target_size: UVec2) -> [u32; 3] {
+    match &pass.dispatch {
+        Some(exprs) => {
+            let eval = |expr: &String| {
+                eval_size(expr, target_size).unwrap_or_else(|err| {
+                    warn_once!("wisp: {err}; dispatching a single workgroup");
+                    1
+                })
+            };
+            [eval(&exprs[0]), eval(&exprs[1]), eval(&exprs[2])]
+        }
+        None => {
+            let [x, y, _] = pass.workgroup_size;
+            [
+                target_size.x.div_ceil(x.max(1)),
+                target_size.y.div_ceil(y.max(1)),
+                1,
+            ]
+        }
     }
 }
 

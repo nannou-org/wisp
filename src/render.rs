@@ -15,7 +15,7 @@ use crate::targets::WispPassTargets;
 use bevy::core_pipeline::FullscreenShader;
 use bevy::core_pipeline::schedule::{Core3d, Core3dSystems};
 use bevy::ecs::system::SystemParamItem;
-use bevy::log::warn_once;
+use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::MainWorld;
 use bevy::render::extract_component::ExtractComponentPlugin;
@@ -39,9 +39,21 @@ pub struct GpuWisp {
     pub shader: Handle<Shader>,
 }
 
-/// One cached pipeline per pass; `None` for passes not yet supported.
+/// One cached pipeline per pass.
 #[derive(Component, Deref, DerefMut, Default)]
-pub struct WispPipelineIds(Vec<Option<CachedRenderPipelineId>>);
+pub struct WispPipelineIds(Vec<WispPassPipelineId>);
+
+#[derive(Clone, Copy, Debug)]
+pub enum WispPassPipelineId {
+    Render(CachedRenderPipelineId),
+    Compute(CachedComputePipelineId),
+}
+
+/// Lazily-created 1x1 storage textures, bound in place of a pass target's
+/// storage view in every pass except the one that writes it (binding the real
+/// view there would conflict with sampling it).
+#[derive(Resource, Default)]
+struct WispDummyStorage(HashMap<TextureFormat, TextureView>);
 
 /// Per-view uniform buffers, rewritten each frame.
 #[derive(Component)]
@@ -78,6 +90,13 @@ pub struct WispPipelineKey {
     pub samples: u32,
 }
 
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub struct WispComputePipelineKey {
+    pub shader: Handle<Shader>,
+    pub bindings: Vec<BindingDesc>,
+    pub entry: String,
+}
+
 impl Plugin for WispRenderPlugin {
     fn build(&self, app: &mut App) {
         app.add_plugins((
@@ -92,6 +111,8 @@ impl Plugin for WispRenderPlugin {
         };
         render_app
             .init_resource::<SpecializedRenderPipelines<WispPipelines>>()
+            .init_resource::<SpecializedComputePipelines<WispPipelines>>()
+            .init_resource::<WispDummyStorage>()
             .add_systems(ExtractSchedule, sync_pipeline_errors)
             .add_systems(
                 Render,
@@ -168,6 +189,22 @@ impl SpecializedRenderPipeline for WispPipelines {
     }
 }
 
+impl SpecializedComputePipeline for WispPipelines {
+    type Key = WispComputePipelineKey;
+
+    fn specialize(&self, key: Self::Key) -> ComputePipelineDescriptor {
+        ComputePipelineDescriptor {
+            label: Some("wisp_compute_pipeline".into()),
+            layout: bind_group_layout_descriptors(&key.bindings),
+            immediate_size: 0,
+            shader: key.shader,
+            shader_defs: vec![],
+            entry_point: Some(key.entry.into()),
+            zero_initialize_workgroup_memory: false,
+        }
+    }
+}
+
 /// The bind group layout descriptors for a schema's bindings, one per group.
 ///
 /// Used for both pipeline specialization and bind group creation - the
@@ -211,6 +248,7 @@ fn queue_wisp(
     pipeline_cache: Res<PipelineCache>,
     pipeline: Res<WispPipelines>,
     mut specialized: ResMut<SpecializedRenderPipelines<WispPipelines>>,
+    mut specialized_compute: ResMut<SpecializedComputePipelines<WispPipelines>>,
     wisps: Res<RenderAssets<GpuWisp>>,
     views: Query<(Entity, &WispHandle, &Msaa, &ViewTarget)>,
 ) {
@@ -218,29 +256,37 @@ fn queue_wisp(
         let Some(wisp) = wisps.get(&**wisp) else {
             continue;
         };
-        let ids: Vec<Option<CachedRenderPipelineId>> = wisp
+        let ids: Vec<WispPassPipelineId> = wisp
             .schema
             .passes
             .iter()
-            .map(|pass| {
-                // Compute passes land in a later milestone.
-                if pass.stage != PassStage::Fragment {
-                    return None;
+            .map(|pass| match pass.stage {
+                PassStage::Compute => {
+                    let key = WispComputePipelineKey {
+                        shader: wisp.shader.clone(),
+                        bindings: wisp.schema.bindings.clone(),
+                        entry: pass.entry.clone(),
+                    };
+                    let id = specialized_compute.specialize(&pipeline_cache, &pipeline, key);
+                    WispPassPipelineId::Compute(id)
                 }
-                // Intermediate targets render at their own format, unsampled;
-                // the final pass matches the view.
-                let (format, samples) = match &pass.target {
-                    Some(target) => (target.format, 1),
-                    None => (view_target.main_texture_format(), msaa.samples()),
-                };
-                let key = WispPipelineKey {
-                    shader: wisp.shader.clone(),
-                    bindings: wisp.schema.bindings.clone(),
-                    entry: pass.entry.clone(),
-                    format,
-                    samples,
-                };
-                Some(specialized.specialize(&pipeline_cache, &pipeline, key))
+                PassStage::Fragment => {
+                    // Intermediate targets render at their own format, unsampled;
+                    // the final pass matches the view.
+                    let (format, samples) = match &pass.target {
+                        Some(target) => (target.format, 1),
+                        None => (view_target.main_texture_format(), msaa.samples()),
+                    };
+                    let key = WispPipelineKey {
+                        shader: wisp.shader.clone(),
+                        bindings: wisp.schema.bindings.clone(),
+                        entry: pass.entry.clone(),
+                        format,
+                        samples,
+                    };
+                    let id = specialized.specialize(&pipeline_cache, &pipeline, key);
+                    WispPassPipelineId::Render(id)
+                }
             })
             .collect();
         commands.entity(entity).insert(WispPipelineIds(ids));
@@ -318,6 +364,7 @@ fn prepare_wisp_bind_groups(
     default_sampler: Res<DefaultImageSampler>,
     gpu_images: Res<RenderAssets<GpuImage>>,
     wisps: Res<RenderAssets<GpuWisp>>,
+    mut dummy_storage: ResMut<WispDummyStorage>,
     views: Query<(
         Entity,
         &WispHandle,
@@ -330,18 +377,16 @@ fn prepare_wisp_bind_groups(
         let Some(wisp) = wisps.get(&**wisp) else {
             continue;
         };
-        if wisp
-            .schema
-            .bindings
-            .iter()
-            .any(|b| matches!(b.ty, BindingTy::StorageTexture2d { .. }))
-        {
-            warn_once!("wisp: compute passes are not supported yet; skipping");
-            continue;
-        }
         let Some(dummy) = gpu_images.get(&Handle::<Image>::default()) else {
             continue;
         };
+        // Ensure a placeholder storage view exists for every storage format
+        // before bind group creation borrows the map immutably.
+        for binding in &wisp.schema.bindings {
+            if let BindingTy::StorageTexture2d { format } = binding.ty {
+                dummy_storage.entry(format, &render_device);
+            }
+        }
         let mut dynamic_group = None;
         let passes: Option<Vec<Vec<BindGroup>>> = (0..wisp.schema.passes.len())
             .map(|pass_index| {
@@ -352,6 +397,7 @@ fn prepare_wisp_bind_groups(
                     inputs,
                     pass_targets,
                     dummy,
+                    &dummy_storage,
                     &gpu_images,
                     &default_sampler,
                     &pipeline_cache,
@@ -378,6 +424,7 @@ fn create_pass_bind_groups(
     inputs: &WispInputs,
     pass_targets: Option<&WispPassTargets>,
     dummy: &GpuImage,
+    dummy_storage: &WispDummyStorage,
     gpu_images: &RenderAssets<GpuImage>,
     default_sampler: &DefaultImageSampler,
     pipeline_cache: &PipelineCache,
@@ -411,7 +458,16 @@ fn create_pass_bind_groups(
                         .texture_view
                         .into_binding()
                 }
-                BindingTy::StorageTexture2d { .. } => return None,
+                BindingTy::StorageTexture2d { format } => storage_view(
+                    schema,
+                    binding,
+                    pass_index,
+                    pass_targets,
+                    gpu_images,
+                    dummy_storage,
+                    *format,
+                )?
+                .into_binding(),
             };
             entries.push(BindGroupEntry {
                 binding: binding.binding,
@@ -456,12 +512,67 @@ fn texture_image(
                 Some(target.read().clone())
             }
         }
-        // Storage and audio textures land in later milestones - the dummy image
-        // keeps the bind group valid meanwhile.
+        // Audio textures land in a later milestone - the dummy image keeps the
+        // bind group valid meanwhile. (`StorageTarget` only classifies storage
+        // bindings, which never reach this sampled-texture path.)
         TextureRole::StorageTarget { .. }
         | TextureRole::AudioWaveform { .. }
         | TextureRole::AudioFft { .. } => None,
     }
+}
+
+impl WispDummyStorage {
+    /// The placeholder storage view for a format, creating it on first use.
+    fn entry(&mut self, format: TextureFormat, render_device: &RenderDevice) {
+        self.0.entry(format).or_insert_with(|| {
+            let texture = render_device.create_texture(&TextureDescriptor {
+                label: Some("wisp_dummy_storage"),
+                size: Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: TextureDimension::D2,
+                format,
+                usage: TextureUsages::STORAGE_BINDING,
+                view_formats: &[],
+            });
+            texture.create_view(&TextureViewDescriptor::default())
+        });
+    }
+}
+
+/// The view bound for a storage-texture binding from the given pass.
+///
+/// Only the pass that owns the target binds its real write view; every other
+/// pass gets the placeholder so the image can be sampled elsewhere in the same
+/// usage scope.
+fn storage_view<'a>(
+    schema: &WispSchema,
+    binding: &BindingDesc,
+    pass_index: usize,
+    pass_targets: Option<&'a WispPassTargets>,
+    gpu_images: &'a RenderAssets<GpuImage>,
+    dummy_storage: &'a WispDummyStorage,
+    format: TextureFormat,
+) -> Option<&'a TextureView> {
+    let dummy = dummy_storage.0.get(&format);
+    let texture = schema
+        .textures
+        .iter()
+        .find(|t| (t.group, t.binding) == (binding.group, binding.binding));
+    let real = texture.and_then(|texture| match texture.role {
+        TextureRole::StorageTarget { pass } if pass == pass_index => {
+            let target = pass_targets?.0.get(pass)?.as_ref()?;
+            gpu_images
+                .get(target.write())
+                .map(|gpu_image| &gpu_image.texture_view)
+        }
+        _ => None,
+    });
+    real.or(dummy)
 }
 
 /// Mirror pipeline compilation errors into the main world's [`WispErrors`].
@@ -481,12 +592,11 @@ fn sync_pipeline_errors(
         };
         let passes = wisp.schema.passes.iter().zip(pipeline_ids.iter());
         for (pass, pipeline_id) in passes {
-            let Some(pipeline_id) = pipeline_id else {
-                continue;
+            let state = match pipeline_id {
+                WispPassPipelineId::Render(id) => pipeline_cache.get_render_pipeline_state(*id),
+                WispPassPipelineId::Compute(id) => pipeline_cache.get_compute_pipeline_state(*id),
             };
-            if let CachedPipelineState::Err(err) =
-                pipeline_cache.get_render_pipeline_state(*pipeline_id)
-            {
+            if let CachedPipelineState::Err(err) = state {
                 errors.insert(pass.entry.clone(), err.to_string());
             }
         }
@@ -519,66 +629,103 @@ fn wisp_render(
     let (view_target, bind_groups, pipeline_ids, uniforms, pass_targets) = view.into_inner();
     // All-or-nothing: rendering a partial pass chain (e.g. while pipelines
     // recompile after a hot reload) would feed stale targets downstream.
-    let pipelines: Option<Vec<Option<&RenderPipeline>>> = pipeline_ids
+    enum Ready<'a> {
+        Render(&'a RenderPipeline),
+        Compute(&'a ComputePipeline),
+    }
+    let pipelines: Option<Vec<Ready>> = pipeline_ids
         .iter()
         .map(|pipeline_id| match pipeline_id {
-            // Unsupported pass (e.g. compute, for now): skipped, not blocking.
-            None => Some(None),
-            Some(id) => pipeline_cache.get_render_pipeline(*id).map(Some),
+            WispPassPipelineId::Render(id) => {
+                pipeline_cache.get_render_pipeline(*id).map(Ready::Render)
+            }
+            WispPassPipelineId::Compute(id) => {
+                pipeline_cache.get_compute_pipeline(*id).map(Ready::Compute)
+            }
         })
         .collect();
     let Some(pipelines) = pipelines else {
         return;
     };
     for (pass_index, pipeline) in pipelines.into_iter().enumerate() {
-        let Some(pipeline) = pipeline else {
-            continue;
-        };
-        let target = pass_targets.and_then(|targets| targets.0.get(pass_index)?.as_ref());
-        let color_attachment = match target {
-            None => view_target.get_color_attachment(),
-            Some(target) => {
-                let Some(gpu_image) = gpu_images.get(target.write()) else {
-                    continue;
-                };
-                RenderPassColorAttachment {
-                    view: &gpu_image.texture_view,
-                    resolve_target: None,
-                    ops: Operations {
-                        load: match target.clear {
-                            true => LoadOp::Clear(default()),
-                            false => LoadOp::Load,
-                        },
-                        store: StoreOp::Store,
-                    },
-                    depth_slice: None,
-                }
-            }
-        };
-        let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
-            label: Some("wisp_pass"),
-            color_attachments: &[Some(color_attachment)],
-            depth_stencil_attachment: None,
-            timestamp_writes: None,
-            occlusion_query_set: None,
-            multiview_mask: None,
-        });
-        render_pass.set_render_pipeline(pipeline);
         let Some(groups) = bind_groups.passes.get(pass_index) else {
             continue;
         };
-        for (group_index, group) in groups.iter().enumerate() {
-            let offset = match bind_groups.dynamic_group {
-                Some(dynamic) if dynamic == group_index => {
-                    uniforms.globals_offsets.get(pass_index).copied()
+        let offsets: Vec<(usize, Option<u32>)> = (0..groups.len())
+            .map(|group_index| {
+                let offset = match bind_groups.dynamic_group {
+                    Some(dynamic) if dynamic == group_index => {
+                        uniforms.globals_offsets.get(pass_index).copied()
+                    }
+                    _ => None,
+                };
+                (group_index, offset)
+            })
+            .collect();
+        let target = pass_targets.and_then(|targets| targets.0.get(pass_index)?.as_ref());
+        match pipeline {
+            Ready::Compute(pipeline) => {
+                let Some(dispatch) = target.and_then(|target| target.dispatch) else {
+                    continue;
+                };
+                let mut compute_pass =
+                    ctx.command_encoder()
+                        .begin_compute_pass(&ComputePassDescriptor {
+                            label: Some("wisp_compute_pass"),
+                            timestamp_writes: None,
+                        });
+                compute_pass.set_pipeline(pipeline);
+                for (group_index, offset) in offsets {
+                    let group = &groups[group_index];
+                    match offset {
+                        Some(offset) => {
+                            compute_pass.set_bind_group(group_index as u32, &**group, &[offset]);
+                        }
+                        None => compute_pass.set_bind_group(group_index as u32, &**group, &[]),
+                    }
                 }
-                _ => None,
-            };
-            match offset {
-                Some(offset) => render_pass.set_bind_group(group_index, group, &[offset]),
-                None => render_pass.set_bind_group(group_index, group, &[]),
+                let [x, y, z] = dispatch;
+                compute_pass.dispatch_workgroups(x, y, z);
+            }
+            Ready::Render(pipeline) => {
+                let color_attachment = match target {
+                    None => view_target.get_color_attachment(),
+                    Some(target) => {
+                        let Some(gpu_image) = gpu_images.get(target.write()) else {
+                            continue;
+                        };
+                        RenderPassColorAttachment {
+                            view: &gpu_image.texture_view,
+                            resolve_target: None,
+                            ops: Operations {
+                                load: match target.clear {
+                                    true => LoadOp::Clear(default()),
+                                    false => LoadOp::Load,
+                                },
+                                store: StoreOp::Store,
+                            },
+                            depth_slice: None,
+                        }
+                    }
+                };
+                let mut render_pass = ctx.begin_tracked_render_pass(RenderPassDescriptor {
+                    label: Some("wisp_pass"),
+                    color_attachments: &[Some(color_attachment)],
+                    depth_stencil_attachment: None,
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    multiview_mask: None,
+                });
+                render_pass.set_render_pipeline(pipeline);
+                for (group_index, offset) in offsets {
+                    let group = &groups[group_index];
+                    match offset {
+                        Some(offset) => render_pass.set_bind_group(group_index, group, &[offset]),
+                        None => render_pass.set_bind_group(group_index, group, &[]),
+                    }
+                }
+                render_pass.draw(0..3, 0..1);
             }
         }
-        render_pass.draw(0..3, 0..1);
     }
 }
