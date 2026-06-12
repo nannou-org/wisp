@@ -45,8 +45,10 @@ use crate::asset::{Wisp, WispHandle, WispLoader};
 use crate::error::WispErrors;
 use crate::globals::FrameGlobals;
 use crate::inputs::{WispInputs, inputs_from_schema, rematch_inputs};
+use bevy::camera::RenderTarget;
 use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
+use bevy::window::{PresentMode, PrimaryWindow, WindowRef};
 
 pub mod annot;
 pub mod asset;
@@ -63,13 +65,36 @@ pub mod targets;
 pub mod ui;
 
 pub mod prelude {
-    pub use crate::WispPlugin;
     pub use crate::asset::{Wisp, WispHandle};
     #[cfg(feature = "audio")]
     pub use crate::audio::WispAudio;
     pub use crate::error::WispErrors;
     pub use crate::inputs::{WispInputs, WispValue};
     pub use crate::schema::WispSchema;
+    pub use crate::{WispConfig, WispPlugin};
+}
+
+/// Behavioural configuration for [`WispPlugin`]. Insert before adding the
+/// plugin to override the defaults.
+#[derive(Resource, Clone, Debug)]
+pub struct WispConfig {
+    /// Request [`PresentMode::Mailbox`] for windows displaying a wisp that are
+    /// still on bevy's default present mode. Mailbox keeps vsync (no tearing)
+    /// without blocking rendering, noticeably lowering latency on native
+    /// platforms - good for live visuals; bevy falls back (`Mailbox` ->
+    /// `Immediate` -> `Fifo`) where unsupported.
+    ///
+    /// A window whose present mode differs from the default is always left
+    /// alone. To keep the default `Fifo` explicitly, disable this.
+    pub prefer_mailbox: bool,
+}
+
+impl Default for WispConfig {
+    fn default() -> Self {
+        Self {
+            prefer_mailbox: true,
+        }
+    }
 }
 
 pub struct WispPlugin;
@@ -79,6 +104,7 @@ impl Plugin for WispPlugin {
         app.init_asset::<Wisp>()
             .init_asset_loader::<WispLoader>()
             .init_resource::<FrameGlobals>()
+            .init_resource::<WispConfig>()
             .init_resource::<WispErrors>()
             .add_plugins(render::WispRenderPlugin)
             .add_systems(
@@ -88,6 +114,7 @@ impl Plugin for WispPlugin {
                     sync_wisp_inputs,
                     targets::update_pass_targets,
                     error::collect_load_errors,
+                    prefer_mailbox_present_mode,
                 ),
             );
         #[cfg(feature = "audio")]
@@ -100,6 +127,36 @@ impl Plugin for WispPlugin {
             Update,
             ui::wisp_ui.run_if(resource_exists::<bevy_egui::EguiUserTextures>),
         );
+    }
+}
+
+/// Request low-latency mailbox presentation for windows displaying a wisp,
+/// where the window is still on bevy's default present mode (see
+/// [`WispConfig::prefer_mailbox`]).
+fn prefer_mailbox_present_mode(
+    config: Res<WispConfig>,
+    cameras: Query<&RenderTarget, With<WispHandle>>,
+    primary: Query<Entity, With<PrimaryWindow>>,
+    mut windows: Query<&mut Window>,
+) {
+    if !config.prefer_mailbox {
+        return;
+    }
+    for target in &cameras {
+        let RenderTarget::Window(window_ref) = target else {
+            continue;
+        };
+        let entity = match window_ref {
+            WindowRef::Primary => primary.iter().next(),
+            WindowRef::Entity(entity) => Some(*entity),
+        };
+        let Some(mut window) = entity.and_then(|entity| windows.get_mut(entity).ok()) else {
+            continue;
+        };
+        // Only override the default - an explicit choice wins.
+        if window.present_mode == PresentMode::default() {
+            window.present_mode = PresentMode::Mailbox;
+        }
     }
 }
 
