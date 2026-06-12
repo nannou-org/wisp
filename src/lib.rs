@@ -45,6 +45,8 @@ use bevy::prelude::*;
 
 pub mod annot;
 pub mod asset;
+#[cfg(feature = "audio")]
+pub mod audio;
 pub mod error;
 pub mod globals;
 pub mod inputs;
@@ -58,6 +60,8 @@ pub mod ui;
 pub mod prelude {
     pub use crate::NannouWispPlugin;
     pub use crate::asset::{Wisp, WispHandle};
+    #[cfg(feature = "audio")]
+    pub use crate::audio::WispAudio;
     pub use crate::error::WispErrors;
     pub use crate::inputs::{WispInputs, WispValue};
     pub use crate::schema::WispSchema;
@@ -81,6 +85,9 @@ impl Plugin for NannouWispPlugin {
                     error::collect_load_errors,
                 ),
             );
+        #[cfg(feature = "audio")]
+        app.init_resource::<audio::WispAudio>()
+            .add_systems(Update, audio::update_audio_textures.after(sync_wisp_inputs));
         // The panel needs `EguiPlugin`; stay inert (rather than panicking on the
         // missing resource) when the user hasn't added it.
         #[cfg(feature = "ui")]

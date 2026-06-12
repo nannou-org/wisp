@@ -493,7 +493,11 @@ fn texture_image(
         .iter()
         .find(|t| (t.group, t.binding) == (binding.group, binding.binding))?;
     match &texture.role {
-        TextureRole::ImageInput => match inputs.get(&texture.name) {
+        // Audio textures are maintained as image inputs by the `audio` feature;
+        // without it (or before any samples arrive) the dummy image is bound.
+        TextureRole::ImageInput
+        | TextureRole::AudioWaveform { .. }
+        | TextureRole::AudioFft { .. } => match inputs.get(&texture.name) {
             Some(WispValue::Image(handle)) => Some(handle.clone()),
             _ => None,
         },
@@ -512,12 +516,9 @@ fn texture_image(
                 Some(target.read().clone())
             }
         }
-        // Audio textures land in a later milestone - the dummy image keeps the
-        // bind group valid meanwhile. (`StorageTarget` only classifies storage
-        // bindings, which never reach this sampled-texture path.)
-        TextureRole::StorageTarget { .. }
-        | TextureRole::AudioWaveform { .. }
-        | TextureRole::AudioFft { .. } => None,
+        // `StorageTarget` only classifies storage bindings, which never reach
+        // this sampled-texture path.
+        TextureRole::StorageTarget { .. } => None,
     }
 }
 

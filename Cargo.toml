@@ -19,10 +19,15 @@ bevy = { workspace = true, features = [
 bevy_egui = { workspace = true, optional = true }
 bytemuck.workspace = true
 evalexpr.workspace = true
+half = { workspace = true, optional = true }
 naga.workspace = true
+rustfft = { workspace = true, optional = true }
 thiserror.workspace = true
 
 [features]
+# Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
+# `WispAudio` resource.
+audio = ["dep:half", "dep:rustfft"]
 # Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
 # `EguiPlugin` to be added to the app (nannou's `egui` feature does this).
 ui = ["dep:bevy_egui"]
