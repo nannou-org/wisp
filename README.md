@@ -57,11 +57,25 @@ Tweak inputs by mutating the camera's `WispInputs` component, or enable the
 feature, edits to the file show up live; broken edits keep the last working
 shader on screen and surface the error (`WispErrors`, the log, and the panel).
 
+For low latency, windows displaying a wisp prefer `PresentMode::Mailbox`
+(vsync without blocking) when still on bevy's default present mode, falling
+back gracefully where unsupported. Opt out via `WispConfig::prefer_mailbox`
+or by setting a present mode explicitly.
+
 Try the examples: `simple`, `multipass`, `compute`, `image`,
 `ui` (`--features ui`) and `audio` (`--features audio`), e.g.
 
 ```sh
 cargo run --example ui --features ui,bevy/file_watcher
+```
+
+For a self-contained live-coding setup, the `editor` example pairs a
+syntax-highlighted code editor with the param panel - pick a bundled shader
+or create your own (kept in the platform data dir, e.g. `~/.local/share/wisp`),
+with saves reloading the shader in place:
+
+```sh
+cargo run --example editor --features ui
 ```
 
 ## Shader conventions
