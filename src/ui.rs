@@ -5,31 +5,40 @@
 //! `@color` and drag rows for vectors. [`WispErrors`] are shown in a collapsible
 //! section so live-coding failures are visible on screen.
 //!
+//! By default the widgets live in a floating window; disable that via
+//! [`WispConfig::ui_window`](crate::WispConfig::ui_window) and embed them in
+//! your own UI with [`params_ui`] and [`errors_ui`] (see the `editor` example).
+//!
 //! Requires `bevy_egui`'s `EguiPlugin` to be added to the app (the
 //! panel is inert without it).
 
+use crate::WispConfig;
 use crate::asset::{Wisp, WispHandle};
 use crate::error::WispErrors;
 use crate::inputs::{WispInputs, WispValue};
-use crate::schema::{ParamField, UiHints};
+use crate::schema::{ParamField, UiHints, WispSchema};
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 use bevy_egui::egui;
 
 pub(crate) fn wisp_ui(
+    config: Res<WispConfig>,
     mut contexts: EguiContexts,
     wisps: Res<Assets<Wisp>>,
     errors: Res<WispErrors>,
     asset_server: Res<AssetServer>,
     mut cameras: Query<(&WispHandle, &mut WispInputs)>,
 ) {
+    if !config.ui_window {
+        return;
+    }
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
     egui::Window::new("wisp")
         .default_width(300.0)
         .show(ctx, |ui| {
-            errors_section(ui, &errors);
+            errors_ui(ui, &errors);
             for (handle, mut inputs) in cameras.iter_mut() {
                 let Some(wisp) = wisps.get(&**handle) else {
                     continue;
@@ -40,19 +49,25 @@ pub(crate) fn wisp_ui(
                 if !wisp.schema.description.is_empty() {
                     ui.label(&wisp.schema.description);
                 }
-                if let Some(params) = &wisp.schema.params {
-                    for field in &params.fields {
-                        if let Some(value) = inputs.get_mut(&field.name) {
-                            field_row(ui, field, value);
-                        }
-                    }
-                }
+                params_ui(ui, &wisp.schema, &mut inputs);
                 ui.separator();
             }
         });
 }
 
-fn errors_section(ui: &mut egui::Ui, errors: &WispErrors) {
+/// A widget for every param in the schema, mutating the matching `inputs`.
+pub fn params_ui(ui: &mut egui::Ui, schema: &WispSchema, inputs: &mut WispInputs) {
+    if let Some(params) = &schema.params {
+        for field in &params.fields {
+            if let Some(value) = inputs.get_mut(&field.name) {
+                field_row(ui, field, value);
+            }
+        }
+    }
+}
+
+/// A red collapsible section listing the current load/pipeline errors, if any.
+pub fn errors_ui(ui: &mut egui::Ui, errors: &WispErrors) {
     if errors.is_empty() {
         return;
     }

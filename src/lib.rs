@@ -41,6 +41,9 @@
 //! of the Interactive Shader Format) and is the modern, WGSL-first successor to
 //! that idea.
 
+// Bevy system signatures routinely exceed clippy's tuple-complexity threshold.
+#![allow(clippy::type_complexity)]
+
 use crate::asset::{Wisp, WispHandle, WispLoader};
 use crate::error::WispErrors;
 use crate::globals::FrameGlobals;
@@ -87,12 +90,17 @@ pub struct WispConfig {
     /// A window whose present mode differs from the default is always left
     /// alone. To keep the default `Fifo` explicitly, disable this.
     pub prefer_mailbox: bool,
+    /// Show the floating params/errors window provided by the `ui` feature.
+    /// Disable to embed the widgets in your own UI via `ui::params_ui` and
+    /// `ui::errors_ui` instead (see the `editor` example).
+    pub ui_window: bool,
 }
 
 impl Default for WispConfig {
     fn default() -> Self {
         Self {
             prefer_mailbox: true,
+            ui_window: true,
         }
     }
 }
