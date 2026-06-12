@@ -1,17 +1,19 @@
 //! A minimal live-coding editor for wisp shaders.
 //!
-//! The left panel is a monospace code editor with syntax highlighting. Pick one
-//! of the bundled shaders or create your own - user shaders live in the
-//! platform data directory (e.g. `~/.local/share/wisp` on Linux). Saving
-//! (button or ctrl/cmd+S) writes the file and reloads the shader in place;
-//! broken edits keep the last working version on screen while the error shows
-//! in the panel. Wisp's auto-generated window (`ui` feature) provides the
-//! param widgets.
+//! The left panel holds the param widgets and a monospace code editor with
+//! syntax highlighting; the shader renders in the space to the right (the
+//! camera viewport follows the panel). Pick one of the bundled shaders or
+//! create your own - user shaders live in the platform data directory (e.g.
+//! `~/.local/share/wisp` on Linux). Saving (button or ctrl/cmd+S) writes the
+//! file and reloads the shader in place; broken edits keep the last working
+//! version on screen while the error shows in the panel.
 
 use bevy::asset::UnapprovedPathMode;
+use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
 use bevy_wisp::prelude::*;
+use bevy_wisp::ui::{errors_ui, params_ui};
 use std::path::{Path, PathBuf};
 
 const NEW_SHADER_TEMPLATE: &str = r#"//! A fresh wisp - edit me.
@@ -120,6 +122,12 @@ fn main() {
             },
             WispPlugin,
         ))
+        // The params/errors widgets are embedded in the editor panel instead
+        // of wisp's floating window.
+        .insert_resource(WispConfig {
+            ui_window: false,
+            ..default()
+        })
         .add_systems(Startup, setup)
         .add_systems(Update, editor_ui)
         .run();
@@ -132,7 +140,24 @@ fn user_shader_dir() -> PathBuf {
         .join("wisp")
 }
 
-fn setup(mut commands: Commands, asset_server: Res<AssetServer>) {
+fn setup(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    mut egui_settings: ResMut<bevy_egui::EguiGlobalSettings>,
+) {
+    // The egui UI gets its own full-window camera: bevy_egui sizes a context
+    // to its camera's viewport, so hosting the UI on the wisp camera (whose
+    // viewport follows the panel) would shrink the UI along with it.
+    egui_settings.auto_create_primary_context = false;
+    commands.spawn((
+        Camera2d,
+        bevy_egui::PrimaryEguiContext,
+        Camera {
+            order: 1,
+            clear_color: bevy::camera::ClearColorConfig::None,
+            ..default()
+        },
+    ));
     let camera = commands.spawn(Camera3d::default()).id();
     let mut editor = Editor {
         files: Editor::scan(),
@@ -178,17 +203,28 @@ fn select(
     }
 }
 
+#[allow(clippy::too_many_arguments, clippy::type_complexity)]
 fn editor_ui(
     mut commands: Commands,
     mut contexts: EguiContexts,
     mut editor: ResMut<Editor>,
     asset_server: Res<AssetServer>,
-    cameras: Query<Entity, With<Camera3d>>,
+    wisps: Res<Assets<Wisp>>,
+    errors: Res<WispErrors>,
+    mut cameras: Query<
+        (
+            Entity,
+            &mut Camera,
+            Option<&WispHandle>,
+            Option<&mut WispInputs>,
+        ),
+        With<Camera3d>,
+    >,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
-    let Ok(camera) = cameras.single() else {
+    let Ok((camera, mut camera_config, handle, mut inputs)) = cameras.single_mut() else {
         return;
     };
     let mut action = None;
@@ -196,7 +232,7 @@ fn editor_ui(
     // replacement `show_inside` wants a root `Ui` that bevy_egui's single-pass
     // mode doesn't expose); revisit alongside the multi-pass migration.
     #[allow(deprecated)]
-    egui::Panel::left("wisp_editor")
+    let panel = egui::Panel::left("wisp_editor")
         .resizable(true)
         .default_size(460.0)
         .show(ctx, |ui| {
@@ -241,6 +277,18 @@ fn editor_ui(
             }
             ui.separator();
 
+            // Wisp's params/errors widgets, embedded above the code editor.
+            errors_ui(ui, &errors);
+            if let (Some(handle), Some(inputs)) = (handle, inputs.as_mut())
+                && let Some(wisp) = wisps.get(&**handle)
+                && wisp.schema.params.is_some()
+            {
+                egui::CollapsingHeader::new("params")
+                    .default_open(true)
+                    .show(ui, |ui| params_ui(ui, &wisp.schema, inputs));
+                ui.separator();
+            }
+
             let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ctx, ui.style());
             let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
                 // The simple built-in highlighter has no WGSL grammar; Rust's
@@ -268,6 +316,28 @@ fn editor_ui(
                 }
             });
         });
+
+    // The shader renders in whatever space the panel leaves over.
+    let content = ctx.content_rect();
+    let scale = ctx.pixels_per_point();
+    let panel_edge = panel
+        .response
+        .rect
+        .max
+        .x
+        .clamp(content.min.x, content.max.x);
+    let position = UVec2::new((panel_edge * scale) as u32, (content.min.y * scale) as u32);
+    let size = UVec2::new(
+        ((content.max.x - panel_edge) * scale) as u32,
+        (content.height() * scale) as u32,
+    );
+    if size.x > 0 && size.y > 0 {
+        camera_config.viewport = Some(Viewport {
+            physical_position: position,
+            physical_size: size,
+            ..default()
+        });
+    }
 
     match action {
         None => {}
