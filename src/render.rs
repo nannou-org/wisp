@@ -7,6 +7,7 @@
 //! triangle ([`FullscreenShader`]).
 
 use crate::asset::{Wisp, WispHandle};
+use crate::error::WispErrors;
 use crate::globals::{FrameGlobals, pack_globals};
 use crate::inputs::{WispInputs, WispValue, pack_params};
 use crate::schema::{BindingDesc, BindingTy, PassStage, TextureRole, WispSchema};
@@ -15,6 +16,7 @@ use bevy::core_pipeline::schedule::{Core3d, Core3dSystems};
 use bevy::ecs::system::SystemParamItem;
 use bevy::log::warn_once;
 use bevy::prelude::*;
+use bevy::render::MainWorld;
 use bevy::render::extract_component::ExtractComponentPlugin;
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets};
@@ -84,6 +86,7 @@ impl Plugin for WispRenderPlugin {
         };
         render_app
             .init_resource::<SpecializedRenderPipelines<WispPipelines>>()
+            .add_systems(ExtractSchedule, sync_pipeline_errors)
             .add_systems(
                 Render,
                 (
@@ -397,6 +400,46 @@ fn texture_image(
         // Pass targets and audio textures land in later milestones - the dummy
         // image keeps the bind group valid meanwhile.
         _ => None,
+    }
+}
+
+/// Mirror pipeline compilation errors into the main world's [`WispErrors`].
+///
+/// Runs during extraction (the only point where the render world can reach the
+/// main world), following the pattern of nannou's compute `sync_pipeline_cache`.
+fn sync_pipeline_errors(
+    mut main_world: ResMut<MainWorld>,
+    pipeline_cache: Res<PipelineCache>,
+    wisps: Res<RenderAssets<GpuWisp>>,
+    views: Query<(&WispHandle, &WispPipelineIds)>,
+) {
+    let mut errors = std::collections::BTreeMap::new();
+    for (wisp, pipeline_ids) in views.iter() {
+        let Some(wisp) = wisps.get(&**wisp) else {
+            continue;
+        };
+        let passes = wisp.schema.passes.iter().zip(pipeline_ids.iter());
+        for (pass, pipeline_id) in passes {
+            let Some(pipeline_id) = pipeline_id else {
+                continue;
+            };
+            if let CachedPipelineState::Err(err) =
+                pipeline_cache.get_render_pipeline_state(*pipeline_id)
+            {
+                errors.insert(pass.entry.clone(), err.to_string());
+            }
+        }
+    }
+    let Some(mut wisp_errors) = main_world.get_resource_mut::<WispErrors>() else {
+        return;
+    };
+    if wisp_errors.pipeline != errors {
+        for (entry, err) in &errors {
+            if wisp_errors.pipeline.get(entry) != Some(err) {
+                error!("wisp pipeline error in pass `{entry}`:\n{err}");
+            }
+        }
+        wisp_errors.pipeline = errors;
     }
 }
 

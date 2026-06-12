@@ -37,6 +37,7 @@
 //! the recognized globals members, and [`asset`] for how loading works.
 
 use crate::asset::{Wisp, WispHandle, WispLoader};
+use crate::error::WispErrors;
 use crate::globals::FrameGlobals;
 use crate::inputs::{WispInputs, inputs_from_schema, rematch_inputs};
 use bevy::platform::collections::HashSet;
@@ -44,6 +45,7 @@ use bevy::prelude::*;
 
 pub mod annot;
 pub mod asset;
+pub mod error;
 pub mod globals;
 pub mod inputs;
 pub mod reflect;
@@ -53,6 +55,7 @@ pub mod schema;
 pub mod prelude {
     pub use crate::NannouWispPlugin;
     pub use crate::asset::{Wisp, WispHandle};
+    pub use crate::error::WispErrors;
     pub use crate::inputs::{WispInputs, WispValue};
     pub use crate::schema::WispSchema;
 }
@@ -64,8 +67,16 @@ impl Plugin for NannouWispPlugin {
         app.init_asset::<Wisp>()
             .init_asset_loader::<WispLoader>()
             .init_resource::<FrameGlobals>()
+            .init_resource::<WispErrors>()
             .add_plugins(render::WispRenderPlugin)
-            .add_systems(Update, (globals::update_frame_globals, sync_wisp_inputs));
+            .add_systems(
+                Update,
+                (
+                    globals::update_frame_globals,
+                    sync_wisp_inputs,
+                    error::collect_load_errors,
+                ),
+            );
     }
 }
 
