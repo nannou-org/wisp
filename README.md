@@ -1,6 +1,10 @@
-# nannou_wisp
+# bevy_wisp 🜉
 
-Interactive WGSL shaders for [nannou](https://nannou.cc), built on Bevy.
+[![crates.io](https://img.shields.io/crates/v/bevy_wisp.svg)](https://crates.io/crates/bevy_wisp)
+[![docs.rs](https://docs.rs/bevy_wisp/badge.svg)](https://docs.rs/bevy_wisp)
+[![CI](https://github.com/nannou-org/wisp/actions/workflows/ci.yml/badge.svg)](https://github.com/nannou-org/wisp/actions/workflows/ci.yml)
+
+Interactive WGSL shaders for [Bevy](https://bevy.org).
 
 A *wisp* is a plain `.wgsl` file describing a (possibly multi-pass) fullscreen
 shader. There is no external metadata: the shader's own interface is reflected
@@ -33,20 +37,34 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 ## Quick start
 
 ```rust,ignore
-// Load the shader (typed: wisps are plain .wgsl, resolved by asset type)...
-let wisp: Handle<Wisp> = app.asset_server().load("wisp/my_shader.wgsl");
-// ...and point a camera at it. Output goes wherever the camera renders -
-// a window, or an `Image` render target.
-commands.entity(camera).insert(WispHandle(wisp));
+use bevy::prelude::*;
+use bevy_wisp::prelude::*;
+
+fn main() {
+    App::new()
+        .add_plugins((DefaultPlugins, WispPlugin))
+        .add_systems(Startup, |mut commands: Commands, assets: Res<AssetServer>| {
+            // Typed load: wisps are plain .wgsl, resolved by asset type.
+            let wisp: Handle<Wisp> = assets.load("wisp/my_shader.wgsl");
+            // Output goes wherever the camera renders - a window, or an
+            // `Image` render target.
+            commands.spawn((Camera3d::default(), WispHandle(wisp)));
+        })
+        .run();
+}
 ```
 
 Tweak inputs by mutating the camera's `WispInputs` component, or enable the
-`ui` feature for an auto-generated egui panel. With nannou's `hot_reload`
+`ui` feature for an auto-generated egui panel. With bevy's `file_watcher`
 feature, edits to the file show up live; broken edits keep the last working
 shader on screen and surface the error (`WispErrors`, the log, and the panel).
 
-Through the `nannou` crate the relevant features are `wisp`, `wisp_ui` and
-`wisp_audio`.
+Try the examples: `simple`, `multipass`, `compute`, `image`,
+`ui` (`--features ui`) and `audio` (`--features audio`), e.g.
+
+```sh
+cargo run --example ui --features ui,bevy/file_watcher
+```
 
 ## Shader conventions
 
@@ -148,17 +166,37 @@ rejected: wisp shaders are plain WGSL.
 ## Cargo features
 
 - `ui` - auto-generated egui control panel (requires `bevy_egui`'s
-  `EguiPlugin`, which nannou's `egui` feature adds).
+  `EguiPlugin` in single-pass mode; see the `ui` example).
 - `audio` - waveform/FFT textures fed from the `WispAudio` resource.
 
-## Relation to ISF
+## Bevy compatibility
 
-Wisp is the successor to `nannou_isf` and the [Interactive Shader
-Format](https://isf.video): the same idea - shaders as portable, introspectable
-assets with tweakable inputs and multi-pass rendering - rebuilt WGSL-first with
-the interface reflected from the shader itself instead of a JSON comment block.
-Differences to be aware of: passes are entry points rather than `PASSES`
-entries, float targets are `rgba16float` (not `rgba32float`), there is no
-`event` input type (use `@bool`), and audio waveforms are signed. Support for
-loading ISF files via a GLSL-to-WGSL translation layer is planned;
-`nannou_isf` remains available in the meantime.
+| bevy | bevy_wisp |
+|------|-----------|
+| 0.19 | 0.1       |
+
+## Relation to ISF and nannou
+
+Wisp grew out of [nannou](https://nannou.cc) as the successor to `nannou_isf`
+and the [Interactive Shader Format](https://isf.video): the same idea -
+shaders as portable, introspectable assets with tweakable inputs and
+multi-pass rendering - rebuilt WGSL-first with the interface reflected from
+the shader itself instead of a JSON comment block. Differences to be aware of:
+passes are entry points rather than `PASSES` entries, float targets are
+`rgba16float` (not `rgba32float`), there is no `event` input type (use
+`@bool`), and audio waveforms are signed. Support for loading ISF files via a
+GLSL-to-WGSL translation layer is planned.
+
+## License
+
+Licensed under either of
+
+- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
+- MIT license ([LICENSE-MIT](LICENSE-MIT))
+
+at your option.
+
+Unless you explicitly state otherwise, any contribution intentionally
+submitted for inclusion in the work by you, as defined in the Apache-2.0
+license, shall be dual licensed as above, without any additional terms or
+conditions.
