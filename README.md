@@ -1,4 +1,4 @@
-# wisp 🜉
+# wisp
 
 [![crates.io](https://img.shields.io/crates/v/bevy_wisp.svg)](https://crates.io/crates/bevy_wisp) [![docs.rs](https://docs.rs/bevy_wisp/badge.svg)](https://docs.rs/bevy_wisp) [![CI](https://github.com/nannou-org/wisp/actions/workflows/ci.yml/badge.svg)](https://github.com/nannou-org/wisp/actions/workflows/ci.yml)
 
