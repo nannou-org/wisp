@@ -28,10 +28,18 @@
 //! }
 //! ```
 //!
+//! Load a wisp with `asset_server.load::<Wisp>("path.wgsl")` and insert a
+//! [`WispHandle`](asset::WispHandle) on a camera; the shader renders wherever the
+//! camera does. Tweak inputs through the camera's [`WispInputs`](inputs::WispInputs)
+//! component.
+//!
 //! See [`schema`] for the full set of conventions and annotations, [`globals`] for
 //! the recognized globals members, and [`asset`] for how loading works.
 
-use crate::asset::{Wisp, WispLoader};
+use crate::asset::{Wisp, WispHandle, WispLoader};
+use crate::globals::FrameGlobals;
+use crate::inputs::{WispInputs, inputs_from_schema, rematch_inputs};
+use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 
 pub mod annot;
@@ -39,6 +47,7 @@ pub mod asset;
 pub mod globals;
 pub mod inputs;
 pub mod reflect;
+pub mod render;
 pub mod schema;
 
 pub mod prelude {
@@ -52,6 +61,48 @@ pub struct NannouWispPlugin;
 
 impl Plugin for NannouWispPlugin {
     fn build(&self, app: &mut App) {
-        app.init_asset::<Wisp>().init_asset_loader::<WispLoader>();
+        app.init_asset::<Wisp>()
+            .init_asset_loader::<WispLoader>()
+            .init_resource::<FrameGlobals>()
+            .add_plugins(render::WispRenderPlugin)
+            .add_systems(Update, (globals::update_frame_globals, sync_wisp_inputs));
+    }
+}
+
+/// Keep each wisp camera's [`WispInputs`] in sync with its schema: populate them
+/// when the handle is added or the asset (re)loads, preserving values that still
+/// match by name and type.
+fn sync_wisp_inputs(
+    mut commands: Commands,
+    wisps: Res<Assets<Wisp>>,
+    mut events: MessageReader<AssetEvent<Wisp>>,
+    mut cameras: Query<(Entity, Ref<WispHandle>, Option<&mut WispInputs>)>,
+) {
+    let updated: HashSet<AssetId<Wisp>> = events
+        .read()
+        .filter_map(|event| match event {
+            AssetEvent::LoadedWithDependencies { id } | AssetEvent::Modified { id } => Some(*id),
+            _ => None,
+        })
+        .collect();
+    for (entity, handle, inputs) in cameras.iter_mut() {
+        let stale = handle.is_changed() || inputs.is_none() || updated.contains(&handle.id());
+        if !stale {
+            continue;
+        }
+        let Some(wisp) = wisps.get(&**handle) else {
+            continue;
+        };
+        match inputs {
+            Some(mut inputs) => {
+                let rematched = rematch_inputs(&inputs, &wisp.schema);
+                *inputs = rematched;
+            }
+            None => {
+                commands
+                    .entity(entity)
+                    .insert(inputs_from_schema(&wisp.schema));
+            }
+        }
     }
 }

@@ -8,6 +8,9 @@
 
 use crate::schema::ParamType;
 use bevy::math::{Vec2, Vec4};
+use bevy::prelude::*;
+use bevy::render::extract_resource::ExtractResource;
+use bevy::window::PrimaryWindow;
 
 /// A recognized member of the wisp globals uniform struct.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -49,6 +52,33 @@ pub struct GlobalsValues {
     pub pass_index: u32,
     pub mouse: Vec4,
     pub date: Vec4,
+}
+
+/// Frame-wide globals values, updated in the main world each frame and extracted
+/// for rendering. Per-pass values (resolution, pass index) are filled in at render
+/// time via [`FrameGlobals::values`].
+#[derive(Resource, ExtractResource, Clone, Copy, Debug, Default)]
+pub struct FrameGlobals {
+    pub time: f32,
+    pub time_delta: f32,
+    pub frame: u32,
+    pub mouse: Vec4,
+    pub date: Vec4,
+}
+
+impl FrameGlobals {
+    /// The full globals values for one pass.
+    pub fn values(&self, resolution: Vec2, pass_index: u32) -> GlobalsValues {
+        GlobalsValues {
+            resolution,
+            time: self.time,
+            time_delta: self.time_delta,
+            frame: self.frame,
+            pass_index,
+            mouse: self.mouse,
+            date: self.date,
+        }
+    }
 }
 
 impl GlobalKind {
@@ -114,6 +144,46 @@ pub fn date_vec4(unix_secs: u64) -> [f32; 4] {
     let secs = (unix_secs % 86_400) as f32;
     let (y, m, d) = civil_from_days(days);
     [y as f32, m as f32, d as f32, secs]
+}
+
+/// Update [`FrameGlobals`] from the clock, cursor and mouse buttons.
+pub fn update_frame_globals(
+    mut globals: ResMut<FrameGlobals>,
+    time: Res<Time>,
+    buttons: Res<ButtonInput<MouseButton>>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+) {
+    globals.time = time.elapsed_secs();
+    globals.time_delta = time.delta_secs();
+    globals.frame = globals.frame.wrapping_add(1);
+    let position = windows
+        .iter()
+        .next()
+        .and_then(Window::physical_cursor_position)
+        .unwrap_or(Vec2::ZERO);
+    let held = buttons.pressed(MouseButton::Left);
+    let pressed = buttons.just_pressed(MouseButton::Left);
+    globals.mouse = Vec4::new(
+        position.x,
+        position.y,
+        held as u32 as f32,
+        pressed as u32 as f32,
+    );
+    globals.date = Vec4::from_array(now_date());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn now_date() -> [f32; 4] {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|since| date_vec4(since.as_secs()))
+        .unwrap_or_default()
+}
+
+// `SystemTime::now` is unavailable on wasm.
+#[cfg(target_arch = "wasm32")]
+fn now_date() -> [f32; 4] {
+    [0.0; 4]
 }
 
 fn write<T: bytemuck::NoUninit>(bytes: &mut [u8], offset: usize, value: &[T]) {

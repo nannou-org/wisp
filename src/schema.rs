@@ -49,7 +49,7 @@ pub struct WispSchema {
 }
 
 /// One entry in the shader's bind group interface.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct BindingDesc {
     pub group: u32,
     pub binding: u32,
@@ -58,7 +58,7 @@ pub struct BindingDesc {
     pub ty: BindingTy,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub enum BindingTy {
     /// The wisp globals uniform, bound with a per-pass dynamic offset.
     Globals { size: u32 },
