@@ -18,6 +18,7 @@ use bevy::ecs::system::SystemParamItem;
 use bevy::platform::collections::HashMap;
 use bevy::prelude::*;
 use bevy::render::MainWorld;
+use bevy::render::camera::ExtractedCamera;
 use bevy::render::extract_component::ExtractComponentPlugin;
 use bevy::render::extract_resource::ExtractResourcePlugin;
 use bevy::render::render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets};
@@ -333,16 +334,21 @@ fn prepare_wisp_uniforms(
         &WispHandle,
         &WispInputs,
         &ViewTarget,
+        Option<&ExtractedCamera>,
         Option<&WispPassTargets>,
     )>,
 ) {
-    for (entity, handle, inputs, view_target, pass_targets) in views.iter() {
+    for (entity, handle, inputs, view_target, camera, pass_targets) in views.iter() {
         let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
         let schema = &wisp.schema;
         let extent = view_target.main_texture().size();
-        let view_size = Vec2::new(extent.width as f32, extent.height as f32);
+        // The final pass reports the camera's viewport size where one is set.
+        let view_size = camera
+            .and_then(|camera| camera.physical_viewport_size)
+            .map(|size| size.as_vec2())
+            .unwrap_or_else(|| Vec2::new(extent.width as f32, extent.height as f32));
 
         let (globals, globals_offsets) = match &schema.globals {
             None => (None, Vec::new()),
@@ -676,12 +682,13 @@ fn wisp_render(
         &WispBindGroups,
         &WispPipelineIds,
         &WispUniforms,
+        Option<&ExtractedCamera>,
     )>,
     mut ctx: RenderContext,
     pipeline_cache: Res<PipelineCache>,
     gpu_images: Res<RenderAssets<GpuImage>>,
 ) {
-    let (view_target, handle, bind_groups, pipeline_ids, uniforms) = view.into_inner();
+    let (view_target, handle, bind_groups, pipeline_ids, uniforms, camera) = view.into_inner();
     // Render only a coherent generation: every component must have been built
     // for the shader the view currently points at. While a newly selected
     // shader is still loading/compiling, components from the previous one
@@ -786,6 +793,14 @@ fn wisp_render(
                     occlusion_query_set: None,
                     multiview_mask: None,
                 });
+                // The final pass honours the camera's viewport (e.g. sharing
+                // the window with UI panels); intermediate targets are already
+                // sized to it.
+                if matches!(pass.attachment, PassAttachment::View)
+                    && let Some(viewport) = camera.and_then(|camera| camera.viewport.as_ref())
+                {
+                    render_pass.set_camera_viewport(viewport);
+                }
                 render_pass.set_render_pipeline(pipeline);
                 for (group_index, offset) in offsets {
                     let group = &groups[group_index];

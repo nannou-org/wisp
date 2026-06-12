@@ -54,16 +54,22 @@ pub(crate) fn update_pass_targets(
     mut images: ResMut<Assets<Image>>,
     mut cameras: Query<(
         Entity,
+        &Camera,
         &RenderTarget,
         &WispHandle,
         Option<&mut WispPassTargets>,
     )>,
 ) {
-    for (entity, render_target, wisp, targets) in cameras.iter_mut() {
+    for (entity, camera, render_target, wisp, targets) in cameras.iter_mut() {
         let Some(wisp) = wisps.get(&**wisp) else {
             continue;
         };
-        let Some(view_size) = render_target_size(render_target, &windows, &images) else {
+        // A camera viewport (e.g. when sharing the window with UI panels)
+        // bounds the view; targets and `$WIDTH`/`$HEIGHT` follow it.
+        let viewport_size = camera.viewport.as_ref().map(|v| v.physical_size);
+        let Some(view_size) =
+            viewport_size.or_else(|| render_target_size(render_target, &windows, &images))
+        else {
             warn_once!("wisp: unsupported camera render target; only windows and images work");
             continue;
         };
