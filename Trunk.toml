@@ -1,0 +1,10 @@
+[build]
+target = "editor/web/index.html"
+public_url = "./"
+filehash = false
+
+[serve]
+port = 8088
+# Cross-origin isolation headers. Not required for single-threaded bevy on
+# WebGPU/WebGL2, but harmless and lets `trunk serve` match the deployed setup.
+headers = { "Cross-Origin-Opener-Policy" = "same-origin", "Cross-Origin-Embedder-Policy" = "require-corp" }

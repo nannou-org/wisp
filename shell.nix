@@ -2,6 +2,7 @@
 # system libraries bevy needs at build and run time. CI runs everything
 # through this shell (`nix develop -c ...`) for reproducibility.
 { alsa-lib
+, binaryen
 , cargo
 , cargo-semver-checks
 , clippy
@@ -12,6 +13,7 @@
 , libxi
 , libxkbcommon
 , libxrandr
+, lld
 , mkShell
 , pkg-config
 , release-plz
@@ -19,9 +21,11 @@
 , rustc
 , rustfmt
 , stdenv
+, trunk
 , udev
 , vulkan-loader
 , vulkan-validation-layers
+, wasm-bindgen-cli
 , wayland
 }:
 let
@@ -49,6 +53,11 @@ mkShell {
     rust-analyzer
     rustc
     rustfmt
+    # wasm build of the editor: `trunk serve`, `trunk build`.
+    binaryen
+    lld
+    trunk
+    wasm-bindgen-cli
   ] ++ runtimeLibs;
 
   env = lib.optionalAttrs stdenv.isLinux {

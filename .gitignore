@@ -1,2 +1,7 @@
 /target
 .direnv
+# nix build output symlinks
+/result
+/result-*
+# trunk build output
+/dist

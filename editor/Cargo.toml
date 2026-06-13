@@ -1,0 +1,39 @@
+[package]
+name = "wisp-editor"
+version = "0.1.0"
+description = "A live-coding editor for bevy_wisp shaders, native and on the web."
+authors = ["mitchmindtree <mitchell.nordine@gmail.com>"]
+repository = "https://github.com/nannou-org/wisp"
+license = "MIT OR Apache-2.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "wisp-editor"
+path = "src/main.rs"
+
+[dependencies]
+bevy_wisp = { path = "..", features = ["ui"] }
+# Full bevy for windowing/winit/render (native backends).
+bevy = "0.19.0-rc.2"
+# The editor names `bevy_egui::` directly, so depend on it explicitly rather
+# than relying on bevy_wisp's re-export behind the `ui` feature.
+bevy_egui = "0.40.0-rc.1"
+# Syntax highlighting, kept in lockstep with the `egui` used by `bevy_egui`.
+egui_extras = { version = "0.34", default-features = false }
+egui_tiles = "0.15"
+
+# Platform data dir for the user shader directory; native only.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+dirs = "6"
+
+[features]
+# Pick the wasm rendering backend. `webgl2` is the default because it runs in
+# every current browser; the compute-pass shaders surface a pipeline error
+# under it. `webgpu` runs every bundled shader (including the compute passes)
+# but needs a WebGPU-capable browser - build it with
+# `--no-default-features --features webgpu`. The features are inert on native
+# (bevy gates them behind `wasm32`).
+default = ["webgl2"]
+webgpu = ["bevy/webgpu"]
+webgl2 = ["bevy/webgl2"]

@@ -69,13 +69,25 @@ Try the examples: `simple`, `multipass`, `compute`, `image`,
 cargo run --example ui --features ui,bevy/file_watcher
 ```
 
-For a self-contained live-coding setup, the `editor` example pairs a
+For a self-contained live-coding setup, the `wisp-editor` crate pairs a
 syntax-highlighted code editor with the param panel - pick a bundled shader
 or create your own (kept in the platform data dir, e.g. `~/.local/share/wisp`),
 with saves reloading the shader in place:
 
 ```sh
-cargo run --example editor --features ui
+cargo run -p wisp-editor
+```
+
+The editor also builds for the web. Serve it locally with `trunk serve` (or
+`nix run .#serve-wisp-editor-web`); pushes to `main` publish it to GitHub Pages.
+On the web only the bundled shaders are available and saving is disabled.
+
+The web build defaults to the **WebGL2** backend for broad browser support; the
+compute-pass shaders error there. To build the **WebGPU** backend instead (runs
+every shader, but needs a WebGPU-capable browser), pass the feature through:
+
+```sh
+trunk serve --no-default-features --features webgpu
 ```
 
 ## Shader conventions

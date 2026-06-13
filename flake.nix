@@ -17,8 +17,22 @@
       perSystemPkgs = f: perSystem (system: f system (systemPkgs system));
     in
     {
+      packages = perSystemPkgs (_: pkgs:
+        let
+          # Pinned to match the wasm-bindgen in Cargo.lock (nixpkgs lags behind).
+          wasm-bindgen-cli = pkgs.callPackage ./pkgs/wasm-bindgen-cli.nix { };
+          wisp-editor-web = pkgs.callPackage ./pkgs/wisp-editor-web.nix { inherit wasm-bindgen-cli; };
+          serve-wisp-editor-web = pkgs.callPackage ./pkgs/serve-wisp-editor-web.nix { inherit wisp-editor-web; };
+        in
+        {
+          inherit wasm-bindgen-cli wisp-editor-web serve-wisp-editor-web;
+          default = wisp-editor-web;
+        });
+
       devShells = perSystemPkgs (system: pkgs: {
-        wisp-dev = pkgs.callPackage ./shell.nix { };
+        wisp-dev = pkgs.callPackage ./shell.nix {
+          inherit (inputs.self.packages.${system}) wasm-bindgen-cli;
+        };
         default = inputs.self.devShells.${system}.wisp-dev;
       });
 

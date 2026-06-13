@@ -1854,9 +1854,6 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "bytemuck",
- "dirs",
- "egui_extras",
- "egui_tiles",
  "evalexpr",
  "half",
  "naga",
@@ -6043,6 +6040,7 @@ dependencies = [
  "smallvec",
  "static_assertions",
  "wasm-bindgen",
+ "wasm-bindgen-futures",
  "web-sys",
  "wgpu-core",
  "wgpu-hal",
@@ -6619,6 +6617,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0592e1c9d151f854e6fd382574c3a0855250e1d9b2f99d9281c6e6391af352f1"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "wisp-editor"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "bevy_egui",
+ "bevy_wisp",
+ "dirs",
+ "egui_extras",
+ "egui_tiles",
 ]
 
 [[package]]
