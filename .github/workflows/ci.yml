@@ -6,6 +6,11 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Bevy debug binaries are dominated by debuginfo; without trimming it the
+  # linker fills the runner's disk ("No space left on device"). CI only needs
+  # things to compile and link, so drop debuginfo across all profiles.
+  CARGO_PROFILE_DEV_DEBUG: "0"
+  CARGO_PROFILE_TEST_DEBUG: "0"
 
 # All tooling (toolchain, system libraries) comes from the nix dev shell so
 # that CI and local development are reproducibly identical.
