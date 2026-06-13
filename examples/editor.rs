@@ -182,7 +182,8 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
         }
     }
 
-    // The tab bar matches the panel fill so it looks continuous with the panes.
+    // The panes paint themselves the dark text-edit colour, so the lighter
+    // panel fill here reads as a header strip that separates stacked panes.
     fn tab_bar_color(&self, visuals: &egui::Visuals) -> egui::Color32 {
         visuals.panel_fill
     }
@@ -229,27 +230,31 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
             Pane::Shader => *self.shader_rect = Some(ui.max_rect()),
             // The shader params, with any load/pipeline errors below them.
             Pane::Params => {
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                    egui::ScrollArea::vertical()
-                        .auto_shrink([false; 2])
-                        .show(ui, |ui| {
-                            if let (Some(wisp), Some(inputs)) = (wisp, inputs)
-                                && wisp.schema.params.is_some()
-                            {
-                                params_ui(ui, &wisp.schema, inputs);
-                            }
-                            if !errors.is_empty() {
-                                ui.separator();
-                                errors_ui(ui, errors);
-                            }
-                        });
-                });
+                let frame =
+                    egui::Frame::central_panel(ui.style()).fill(ui.visuals().text_edit_bg_color());
+                egui::CentralPanel::default()
+                    .frame(frame)
+                    .show_inside(ui, |ui| {
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false; 2])
+                            .show(ui, |ui| {
+                                if let (Some(wisp), Some(inputs)) = (wisp, inputs)
+                                    && wisp.schema.params.is_some()
+                                {
+                                    params_ui(ui, &wisp.schema, inputs);
+                                }
+                                if !errors.is_empty() {
+                                    ui.separator();
+                                    errors_ui(ui, errors);
+                                }
+                            });
+                    });
             }
             // The file controls sit above the code editor. The pane paints its
             // own opaque background with no outer margin, so only the controls
             // are inset; the code editor reaches the pane edges.
             Pane::Editor => {
-                let frame = egui::Frame::new().fill(ui.visuals().panel_fill);
+                let frame = egui::Frame::new().fill(ui.visuals().text_edit_bg_color());
                 egui::CentralPanel::default()
                     .frame(frame)
                     .show_inside(ui, |ui| {
@@ -414,7 +419,17 @@ fn setup(
             ..default()
         },
     ));
-    let camera = commands.spawn(Camera3d::default()).id();
+    // Black behind the shader: the wisp camera clears the shader pane's
+    // viewport before rendering into it.
+    let camera = commands
+        .spawn((
+            Camera3d::default(),
+            Camera {
+                clear_color: bevy::camera::ClearColorConfig::Custom(Color::BLACK),
+                ..default()
+            },
+        ))
+        .id();
     let mut editor = Editor {
         files: Editor::scan(),
         selected: None,
