@@ -6672,6 +6672,7 @@ dependencies = [
  "bevy_egui",
  "bevy_pkv",
  "bevy_wisp",
+ "cpal",
  "egui_extras",
  "egui_tiles",
 ]

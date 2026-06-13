@@ -28,6 +28,8 @@ use bevy_wisp::prelude::*;
 use bevy_wisp::ui::{errors_ui, params_ui};
 use std::path::PathBuf;
 
+mod audio;
+
 /// Seed contents for a freshly created shader.
 const NEW_SHADER_TEMPLATE: &str = r#"//! A fresh wisp - edit me.
 
@@ -170,6 +172,7 @@ struct TreeBehavior<'a> {
     errors: &'a WispErrors,
     wisp: Option<&'a Wisp>,
     inputs: Option<&'a mut WispInputs>,
+    audio: &'a mut audio::AudioConfig,
     action: &'a mut Option<Action>,
     /// Set to the shader pane's rect so the camera viewport can follow it.
     shader_rect: &'a mut Option<egui::Rect>,
@@ -256,6 +259,7 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
         let errors = self.errors;
         let wisp = self.wisp;
         let inputs = self.inputs.as_deref_mut();
+        let audio = &mut *self.audio;
         match pane {
             // Painted nothing: the wisp camera renders through this pane, and
             // the camera viewport is fitted to its rect after the tree draws.
@@ -274,6 +278,14 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                     && wisp.schema.params.is_some()
                                 {
                                     params_ui(ui, &wisp.schema, inputs);
+                                }
+                                // The audio capture controls, for shaders that
+                                // declare `@audio`/`@audio_fft` inputs.
+                                if let Some(wisp) = wisp
+                                    && audio::schema_has_audio(&wisp.schema)
+                                {
+                                    ui.separator();
+                                    audio::audio_ui(ui, audio);
                                 }
                                 if !errors.is_empty() {
                                     ui.separator();
@@ -410,6 +422,7 @@ fn main() {
                 ..default()
             },
             WispPlugin,
+            audio::AudioPlugin,
         ))
         // The params/errors widgets are embedded in the editor panel instead
         // of wisp's floating window.
@@ -690,6 +703,7 @@ fn editor_ui(
     asset_server: Res<AssetServer>,
     embedded: Res<EmbeddedAssetRegistry>,
     mut pkv: ResMut<Pkv>,
+    mut audio_config: ResMut<audio::AudioConfig>,
     wisps: Res<Assets<Wisp>>,
     errors: Res<WispErrors>,
     mut cameras: Query<
@@ -733,6 +747,7 @@ fn editor_ui(
             errors: &errors,
             wisp,
             inputs: inputs.as_deref_mut(),
+            audio: &mut audio_config,
             action: &mut action,
             shader_rect: &mut shader_rect,
         };
