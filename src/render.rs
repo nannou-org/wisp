@@ -10,7 +10,7 @@ use crate::asset::{Wisp, WispHandle};
 use crate::error::WispErrors;
 use crate::globals::{FrameGlobals, pack_globals};
 use crate::inputs::{WispInputs, WispValue, pack_params};
-use crate::schema::{BindingDesc, BindingTy, PassStage, TextureRole, WispSchema};
+use crate::schema::{BindingDesc, BindingTy, PassStage, TextureRole, WispSchema, requires_compute};
 use crate::targets::WispPassTargets;
 use bevy::core_pipeline::FullscreenShader;
 use bevy::core_pipeline::schedule::{Core3d, Core3dSystems};
@@ -26,7 +26,7 @@ use bevy::render::render_resource::binding_types::{
     sampler, texture_2d, texture_storage_2d, uniform_buffer_sized,
 };
 use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderContext, RenderDevice, ViewQuery};
+use bevy::render::renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery};
 use bevy::render::texture::{DefaultImageSampler, GpuImage};
 use bevy::render::view::ViewTarget;
 use bevy::render::{Render, RenderApp, RenderSystems};
@@ -233,6 +233,20 @@ impl SpecializedComputePipeline for WispPipelines {
     }
 }
 
+/// Whether the device supports compute shaders.
+///
+/// WebGL2 reports this downlevel flag unset; a wisp with a compute pass (see
+/// [`requires_compute`]) then declares pipelines, layouts and storage textures
+/// the backend cannot build, which would otherwise trip wgpu validation and
+/// take down the app via the default render-error handler. The render systems
+/// skip such a wisp on these devices and report it through [`WispErrors`].
+pub(crate) fn supports_compute(adapter: &RenderAdapter) -> bool {
+    adapter
+        .get_downlevel_capabilities()
+        .flags
+        .contains(DownlevelFlags::COMPUTE_SHADERS)
+}
+
 /// The bind group layout descriptors for a schema's bindings, one per group.
 ///
 /// Used for both pipeline specialization and bind group creation - the
@@ -277,6 +291,7 @@ fn queue_wisp(
     pipeline: Res<WispPipelines>,
     mut specialized: ResMut<SpecializedRenderPipelines<WispPipelines>>,
     mut specialized_compute: ResMut<SpecializedComputePipelines<WispPipelines>>,
+    render_adapter: Res<RenderAdapter>,
     wisps: Res<RenderAssets<GpuWisp>>,
     views: Query<(Entity, &WispHandle, &Msaa, &ViewTarget)>,
 ) {
@@ -284,6 +299,12 @@ fn queue_wisp(
         let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
+        // A compute wisp needs compute-shader support; on a device without it
+        // (e.g. WebGL2) queuing its pipelines and storage-texture layouts would
+        // trip wgpu validation, so skip it. `sync_pipeline_errors` reports why.
+        if requires_compute(&wisp.schema) && !supports_compute(&render_adapter) {
+            continue;
+        }
         let ids: Vec<WispPassPipelineId> = wisp
             .schema
             .passes
@@ -327,6 +348,7 @@ fn queue_wisp(
 fn prepare_wisp_uniforms(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
+    render_adapter: Res<RenderAdapter>,
     frame_globals: Res<FrameGlobals>,
     wisps: Res<RenderAssets<GpuWisp>>,
     views: Query<(
@@ -342,6 +364,12 @@ fn prepare_wisp_uniforms(
         let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
+        // Skip compute wisps the device cannot build (see `queue_wisp`); their
+        // bind groups and pass targets are skipped too, so the uniforms would
+        // go unused.
+        if requires_compute(&wisp.schema) && !supports_compute(&render_adapter) {
+            continue;
+        }
         let schema = &wisp.schema;
         let extent = view_target.main_texture().size();
         // The final pass reports the camera's viewport size where one is set.
@@ -399,6 +427,7 @@ fn prepare_wisp_uniforms(
 fn prepare_wisp_bind_groups(
     mut commands: Commands,
     render_device: Res<RenderDevice>,
+    render_adapter: Res<RenderAdapter>,
     pipeline_cache: Res<PipelineCache>,
     default_sampler: Res<DefaultImageSampler>,
     gpu_images: Res<RenderAssets<GpuImage>>,
@@ -416,6 +445,12 @@ fn prepare_wisp_bind_groups(
         let Some(wisp) = wisps.get(&**handle) else {
             continue;
         };
+        // Skip compute wisps the device cannot build (see `queue_wisp`):
+        // creating the placeholder storage textures and storage-texture bind
+        // groups below would trip wgpu validation on e.g. WebGL2.
+        if requires_compute(&wisp.schema) && !supports_compute(&render_adapter) {
+            continue;
+        }
         let Some(dummy) = gpu_images.get(&Handle::<Image>::default()) else {
             continue;
         };
@@ -643,12 +678,32 @@ fn storage_view<'a>(
 fn sync_pipeline_errors(
     mut main_world: ResMut<MainWorld>,
     pipeline_cache: Res<PipelineCache>,
+    render_adapter: Res<RenderAdapter>,
     wisps: Res<RenderAssets<GpuWisp>>,
-    views: Query<(&WispHandle, &WispPipelineIds)>,
+    views: Query<(&WispHandle, Option<&WispPipelineIds>)>,
 ) {
     let mut errors = std::collections::BTreeMap::new();
     for (wisp, pipeline_ids) in views.iter() {
         let Some(wisp) = wisps.get(&**wisp) else {
+            continue;
+        };
+        // A compute wisp on a device without compute support is never queued
+        // (see `queue_wisp`), so it has no pipeline state to inspect; report the
+        // unsupported backend here instead, keyed by each compute pass.
+        if requires_compute(&wisp.schema) && !supports_compute(&render_adapter) {
+            for pass in wisp.schema.passes.iter() {
+                if matches!(pass.stage, PassStage::Compute) {
+                    errors.insert(
+                        pass.entry.clone(),
+                        "compute shaders are not supported by this device (e.g. under \
+                         WebGL2); run with a WebGPU or native backend to use compute passes"
+                            .to_string(),
+                    );
+                }
+            }
+            continue;
+        }
+        let Some(pipeline_ids) = pipeline_ids else {
             continue;
         };
         let passes = wisp.schema.passes.iter().zip(pipeline_ids.ids.iter());
