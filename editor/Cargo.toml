@@ -22,10 +22,11 @@ bevy_egui = "0.40.0-rc.1"
 # Syntax highlighting, kept in lockstep with the `egui` used by `bevy_egui`.
 egui_extras = { version = "0.34", default-features = false }
 egui_tiles = "0.15"
-
-# Platform data dir for the user shader directory; native only.
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-dirs = "6"
+# Persistent shader storage, the same on native (a `redb` file in the platform
+# data dir) and the web (browser local storage). `default-features = false`
+# drops bevy_pkv's own `bevy` feature, which would otherwise pull in a second,
+# conflicting `bevy_ecs`; the store is wrapped in a local `Resource` instead.
+bevy_pkv = { version = "0.14", default-features = false, features = ["redb"] }
 
 [features]
 # Pick the wasm rendering backend. `webgl2` is the default because it runs in

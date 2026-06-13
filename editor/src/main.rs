@@ -6,27 +6,27 @@
 //! the panes; the shader pane hides its tab when it sits alone so its view
 //! stays clean (the camera viewport follows that pane). Pick one of the
 //! bundled shaders (compiled into the binary, so no assets dir is needed at
-//! runtime) or create your own. Saving (button or ctrl/cmd+S) always writes to
-//! the user shader directory (e.g. `~/.local/share/wisp` on Linux) - editing a
-//! bundled shader saves a private copy there that shadows it - and reloads the
-//! shader in place; broken edits keep the last working version on screen while
-//! the error shows in the params pane.
+//! runtime) or create your own. Saving (button or ctrl/cmd+S) persists to a
+//! key-value store ([`bevy_pkv`]) that works the same on native (a file in the
+//! platform data dir) and on the web (browser local storage) - editing a
+//! bundled shader saves a copy that shadows it - and reloads the shader in
+//! place; broken edits keep the last working version on screen while the error
+//! shows in the params pane.
 //!
-//! On the web build there is no user shader directory, so only the bundled
-//! shaders are listed and the save/create controls are disabled.
+//! Stored shaders load through the same `embedded://` asset source as the
+//! bundled ones: their source is (re)inserted into the embedded registry, so no
+//! filesystem is involved and the create/save controls work on the web too.
 
-use bevy::asset::UnapprovedPathMode;
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
+use bevy_pkv::PkvStore;
 use bevy_wisp::prelude::*;
 use bevy_wisp::ui::{errors_ui, params_ui};
 use std::path::PathBuf;
 
-/// Seed contents for a freshly created shader. Only the native build can
-/// create files, so this is native only.
-#[cfg(not(target_arch = "wasm32"))]
+/// Seed contents for a freshly created shader.
 const NEW_SHADER_TEMPLATE: &str = r#"//! A fresh wisp - edit me.
 
 struct Globals {
@@ -93,6 +93,19 @@ const BUNDLED: &[(&str, &str)] = &[
     ),
 ];
 
+/// The pkv key holding the index of user shader names. The store cannot
+/// enumerate keys, so the names are kept in this list alongside the per-shader
+/// source entries (see [`shader_source_key`]).
+const SHADER_INDEX_KEY: &str = "shaders";
+
+/// Persistent shader storage, wrapping a [`PkvStore`]. The store backs the same
+/// on native (a `redb` file in the platform data dir) and on the web (browser
+/// local storage), so saving and loading work identically on both. bevy_pkv's
+/// own `bevy` feature is disabled to avoid a second `bevy_ecs`, so this newtype
+/// supplies the [`Resource`] impl.
+#[derive(Resource)]
+struct Pkv(PkvStore);
+
 #[derive(Resource)]
 struct Editor {
     files: Vec<ShaderFile>,
@@ -110,21 +123,17 @@ struct ShaderFile {
 
 /// Where a shader's source comes from.
 enum ShaderSource {
-    /// Compiled into the binary; loaded via the `embedded://` asset source.
+    /// Compiled into the binary; loaded via `embedded://wisp/{name}.wgsl`.
     Bundled(&'static str),
-    /// A file in the user shader dir, loaded by path and saved back there.
-    /// Native only - the web build has no user shader directory.
-    #[cfg(not(target_arch = "wasm32"))]
-    User(PathBuf),
+    /// A user shader whose source lives in the [`Pkv`] store under the file's
+    /// name, loaded via the embedded source after [`register_user_source`].
+    User,
 }
 
 /// What the UI asked for this frame, applied after the tree is drawn.
 enum Action {
     Select(usize),
-    /// Save and create write to the user shader dir, so they are native only.
-    #[cfg(not(target_arch = "wasm32"))]
     Save,
-    #[cfg(not(target_arch = "wasm32"))]
     Create,
 }
 
@@ -159,9 +168,9 @@ struct TreeBehavior<'a> {
 }
 
 impl Editor {
-    /// The bundled shaders plus any user shaders, sorted by name. A user file
-    /// shadows the bundled shader of the same name.
-    fn scan() -> Vec<ShaderFile> {
+    /// The bundled shaders plus any user shaders stored in pkv, sorted by name.
+    /// A stored shader shadows the bundled shader of the same name.
+    fn scan(pkv: &Pkv) -> Vec<ShaderFile> {
         let mut files: Vec<ShaderFile> = BUNDLED
             .iter()
             .map(|&(name, source)| ShaderFile {
@@ -169,24 +178,13 @@ impl Editor {
                 source: ShaderSource::Bundled(source),
             })
             .collect();
-        // User shaders live on disk, which only exists on native; the web
-        // build lists the bundled shaders alone.
-        #[cfg(not(target_arch = "wasm32"))]
-        if let Ok(entries) = std::fs::read_dir(user_shader_dir()) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if path.extension().is_some_and(|ext| ext == "wgsl")
-                    && let Some(stem) = path.file_stem()
-                {
-                    let name = stem.to_string_lossy().into_owned();
-                    match files.iter_mut().find(|file| file.name == name) {
-                        Some(file) => file.source = ShaderSource::User(path),
-                        None => files.push(ShaderFile {
-                            name,
-                            source: ShaderSource::User(path),
-                        }),
-                    }
-                }
+        for name in stored_shader_names(pkv) {
+            match files.iter_mut().find(|file| file.name == name) {
+                Some(file) => file.source = ShaderSource::User,
+                None => files.push(ShaderFile {
+                    name,
+                    source: ShaderSource::User,
+                }),
             }
         }
         files.sort_by(|a, b| a.name.cmp(&b.name));
@@ -303,17 +301,14 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                             }
                                         }
                                     });
-                                // Saving writes to the user shader dir; on the
-                                // web build the button stays visible but disabled.
-                                #[cfg(not(target_arch = "wasm32"))]
+                                // Saving persists to the pkv store, which works
+                                // on native and the web alike.
                                 if ui
                                     .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"))
                                     .clicked()
                                 {
                                     *action = Some(Action::Save);
                                 }
-                                #[cfg(target_arch = "wasm32")]
-                                ui.add_enabled(false, egui::Button::new("save (ctrl+S)"));
                             });
 
                             ui.horizontal(|ui| {
@@ -321,22 +316,15 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                     .hint_text("new_shader_name")
                                     .desired_width(180.0);
                                 ui.add(name);
-                                #[cfg(not(target_arch = "wasm32"))]
                                 if ui.button("create").clicked()
                                     && !editor.new_name.trim().is_empty()
                                 {
                                     *action = Some(Action::Create);
                                 }
-                                #[cfg(target_arch = "wasm32")]
-                                ui.add_enabled(false, egui::Button::new("create"));
                             });
                             if let Some(status) = &editor.status {
                                 ui.colored_label(egui::Color32::LIGHT_RED, status);
                             }
-                            // The user shader dir is native only; make the
-                            // disabled controls above self-explanatory.
-                            #[cfg(target_arch = "wasm32")]
-                            ui.weak("save/create are unavailable on the web build");
                         });
 
                         // The code editor fills the rest of the pane, flush to the
@@ -396,22 +384,16 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
 fn main() {
     App::new()
         .add_plugins((
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: String::from("bevy_wisp - editor"),
-                        // Let the canvas track its parent element on the web
-                        // build; ignored on native.
-                        fit_canvas_to_parent: true,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                // User shaders live outside the assets dir.
-                .set(AssetPlugin {
-                    unapproved_path_mode: UnapprovedPathMode::Allow,
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: String::from("bevy_wisp - editor"),
+                    // Let the canvas track its parent element on the web build;
+                    // ignored on native.
+                    fit_canvas_to_parent: true,
                     ..default()
                 }),
+                ..default()
+            }),
             // Wisp's panel runs in `Update`, which needs egui's single-pass
             // mode (see the `ui` example).
             #[allow(deprecated)]
@@ -427,22 +409,50 @@ fn main() {
             ui_window: false,
             ..default()
         })
+        // Persistent shader storage, the same on native and the web.
+        .insert_resource(Pkv(PkvStore::new("nannou-org", "wisp")))
         .add_systems(Startup, setup)
         .add_systems(Update, editor_ui)
         .run();
 }
 
-/// The directory user shaders are kept in, e.g. `~/.local/share/wisp`.
-#[cfg(not(target_arch = "wasm32"))]
-fn user_shader_dir() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("wisp")
+/// The pkv key holding a single user shader's source.
+fn shader_source_key(name: &str) -> String {
+    format!("shader/{name}")
+}
+
+/// The names of all user-saved shaders, in save order (empty if none yet).
+fn stored_shader_names(pkv: &Pkv) -> Vec<String> {
+    pkv.0.get::<Vec<String>>(SHADER_INDEX_KEY).unwrap_or_default()
+}
+
+/// A user shader's stored source, if present.
+fn stored_shader_source(pkv: &Pkv, name: &str) -> Option<String> {
+    pkv.0.get::<String>(shader_source_key(name)).ok()
+}
+
+/// Persist a shader's source, adding its name to the index if not already there.
+fn store_shader(pkv: &mut Pkv, name: &str, source: &str) -> Result<(), bevy_pkv::SetError> {
+    pkv.0.set_string(shader_source_key(name), source)?;
+    let mut names = stored_shader_names(pkv);
+    if !names.iter().any(|n| n == name) {
+        names.push(name.to_owned());
+        pkv.0.set(SHADER_INDEX_KEY, &names)?;
+    }
+    Ok(())
 }
 
 /// The `embedded://` asset path a bundled shader of the given name loads from.
 fn bundled_asset_path(name: &str) -> String {
     format!("embedded://wisp/{name}.wgsl")
+}
+
+/// The `embedded://` asset path a user shader of the given name loads from. The
+/// `user/` sub-path keeps it from colliding with a bundled shader's path, so a
+/// stored shader can shadow a bundled one in the picker while both remain
+/// loadable.
+fn user_asset_path(name: &str) -> String {
+    format!("embedded://wisp/user/{name}.wgsl")
 }
 
 /// Register the bundled shader sources with the `embedded://` asset source so
@@ -455,10 +465,20 @@ fn register_bundled(embedded: &EmbeddedAssetRegistry) {
     }
 }
 
+/// (Re)insert a user shader's source into the embedded registry so it is
+/// loadable - and, after an in-place edit, re-readable on `reload` - via
+/// [`user_asset_path`]. The registry's in-memory dir is shared with its reader,
+/// so overwriting an entry here is what a subsequent `reload` picks up.
+fn register_user_source(embedded: &EmbeddedAssetRegistry, name: &str, source: &str) {
+    let asset_path = PathBuf::from(format!("wisp/user/{name}.wgsl"));
+    embedded.insert_asset(PathBuf::new(), &asset_path, source.as_bytes().to_vec());
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     embedded: Res<EmbeddedAssetRegistry>,
+    pkv: Res<Pkv>,
     mut egui_settings: ResMut<bevy_egui::EguiGlobalSettings>,
 ) {
     register_bundled(&embedded);
@@ -487,7 +507,7 @@ fn setup(
         ))
         .id();
     let mut editor = Editor {
-        files: Editor::scan(),
+        files: Editor::scan(&pkv),
         selected: None,
         buffer: String::new(),
         dirty: false,
@@ -503,7 +523,15 @@ fn setup(
             false => Some(0),
         });
     if let Some(index) = initial {
-        select(&mut editor, index, camera, &mut commands, &asset_server);
+        select(
+            &mut editor,
+            index,
+            camera,
+            &mut commands,
+            &asset_server,
+            &embedded,
+            &pkv,
+        );
     }
     commands.insert_resource(editor);
     commands.insert_resource(EditorTree(create_tree()));
@@ -566,6 +594,8 @@ fn select(
     camera: Entity,
     commands: &mut Commands,
     asset_server: &AssetServer,
+    embedded: &EmbeddedAssetRegistry,
+    pkv: &Pkv,
 ) {
     let file = &editor.files[index];
     let handle: Handle<Wisp>;
@@ -574,17 +604,15 @@ fn select(
             handle = asset_server.load(bundled_asset_path(&file.name));
             (*source).to_owned()
         }
-        #[cfg(not(target_arch = "wasm32"))]
-        ShaderSource::User(path) => match std::fs::read_to_string(path) {
-            Ok(source) => {
-                handle = asset_server.load(path.clone());
-                source
-            }
-            Err(err) => {
-                editor.status = Some(format!("failed to read {}: {err}", path.display()));
+        ShaderSource::User => {
+            let Some(source) = stored_shader_source(pkv, &file.name) else {
+                editor.status = Some(format!("stored shader `{}` is missing", file.name));
                 return;
-            }
-        },
+            };
+            register_user_source(embedded, &file.name, &source);
+            handle = asset_server.load(user_asset_path(&file.name));
+            source
+        }
     };
     editor.buffer = source;
     editor.selected = Some(index);
@@ -600,6 +628,8 @@ fn editor_ui(
     mut editor: ResMut<Editor>,
     mut tree: ResMut<EditorTree>,
     asset_server: Res<AssetServer>,
+    embedded: Res<EmbeddedAssetRegistry>,
+    mut pkv: ResMut<Pkv>,
     wisps: Res<Assets<Wisp>>,
     errors: Res<WispErrors>,
     mut cameras: Query<
@@ -622,13 +652,10 @@ fn editor_ui(
 
     // ctrl/cmd+S saves. Consumed at the context level rather than inside a
     // pane, so it works no matter which pane has focus (or whether the editor
-    // pane is the visible tab). There is nowhere to save to on the web build.
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
-        if ctx.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
-            action = Some(Action::Save);
-        }
+    // pane is the visible tab).
+    let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
+    if ctx.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
+        action = Some(Action::Save);
     }
 
     let wisp = handle.and_then(|handle| wisps.get(&**handle));
@@ -679,64 +706,80 @@ fn editor_ui(
     match action {
         None => {}
         Some(Action::Select(index)) => {
-            select(&mut editor, index, camera, &mut commands, &asset_server);
+            select(
+                &mut editor,
+                index,
+                camera,
+                &mut commands,
+                &asset_server,
+                &embedded,
+                &pkv,
+            );
         }
-        #[cfg(not(target_arch = "wasm32"))]
         Some(Action::Save) => {
             let Some(index) = editor.selected else {
                 return;
             };
-            // Always save to the user dir, never back to the bundled sources.
+            // Always save to the store, never back to the bundled sources.
             let name = editor.files[index].name.clone();
-            let dir = user_shader_dir();
-            let path = dir.join(format!("{name}.wgsl"));
-            let written =
-                std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &editor.buffer));
-            match written {
+            match store_shader(&mut pkv, &name, &editor.buffer) {
                 Ok(()) => {
                     editor.dirty = false;
                     editor.status = None;
+                    register_user_source(&embedded, &name, &editor.buffer);
                     if matches!(editor.files[index].source, ShaderSource::Bundled(_)) {
-                        // First save of a bundled shader: the user copy now
-                        // shadows it, so point the camera at the new file.
-                        editor.files[index].source = ShaderSource::User(path.clone());
-                        let handle: Handle<Wisp> = asset_server.load(path);
+                        // First save of a bundled shader: the stored copy now
+                        // shadows it, so point the camera at the user asset.
+                        editor.files[index].source = ShaderSource::User;
+                        let handle: Handle<Wisp> = asset_server.load(user_asset_path(&name));
                         commands.entity(camera).insert(WispHandle(handle));
                     } else {
-                        // Re-runs the loader; errors surface via wisp's panel
-                        // while the previous working shader keeps rendering.
-                        asset_server.reload(path);
+                        // Re-runs the loader against the updated embedded source;
+                        // errors surface via wisp's panel while the previous
+                        // working shader keeps rendering.
+                        asset_server.reload(user_asset_path(&name));
                     }
                 }
                 Err(err) => {
-                    editor.status = Some(format!("failed to write {}: {err}", path.display()));
+                    editor.status = Some(format!("failed to save `{name}`: {err}"));
                 }
             }
         }
-        #[cfg(not(target_arch = "wasm32"))]
         Some(Action::Create) => {
             let name = editor.new_name.trim().replace(' ', "_");
             // Never clobber: select an existing shader of that name instead.
             if let Some(existing) = editor.files.iter().position(|file| file.name == name) {
-                select(&mut editor, existing, camera, &mut commands, &asset_server);
+                select(
+                    &mut editor,
+                    existing,
+                    camera,
+                    &mut commands,
+                    &asset_server,
+                    &embedded,
+                    &pkv,
+                );
                 return;
             }
-            let dir = user_shader_dir();
-            let path = dir.join(format!("{name}.wgsl"));
-            let written = std::fs::create_dir_all(&dir)
-                .and_then(|()| std::fs::write(&path, NEW_SHADER_TEMPLATE));
-            match written {
+            match store_shader(&mut pkv, &name, NEW_SHADER_TEMPLATE) {
                 Ok(()) => {
+                    editor.new_name.clear();
                     editor.files.push(ShaderFile {
                         name,
-                        source: ShaderSource::User(path),
+                        source: ShaderSource::User,
                     });
-                    editor.new_name.clear();
                     let index = editor.files.len() - 1;
-                    select(&mut editor, index, camera, &mut commands, &asset_server);
+                    select(
+                        &mut editor,
+                        index,
+                        camera,
+                        &mut commands,
+                        &asset_server,
+                        &embedded,
+                        &pkv,
+                    );
                 }
                 Err(err) => {
-                    editor.status = Some(format!("failed to create {}: {err}", path.display()));
+                    editor.status = Some(format!("failed to create `{name}`: {err}"));
                 }
             }
         }

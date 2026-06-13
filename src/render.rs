@@ -285,6 +285,8 @@ pub fn bind_group_layout_descriptors(bindings: &[BindingDesc]) -> Vec<BindGroupL
         .collect()
 }
 
+// Bevy systems legitimately take one parameter per resource/query.
+#[allow(clippy::too_many_arguments)]
 fn queue_wisp(
     mut commands: Commands,
     pipeline_cache: Res<PipelineCache>,
