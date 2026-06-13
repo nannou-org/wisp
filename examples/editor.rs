@@ -203,45 +203,59 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                         });
                 });
             }
-            // The file controls above the syntax-highlighted code editor.
+            // The file controls sit above the code editor. The pane paints its
+            // own opaque background with no outer margin, so only the controls
+            // are inset; the code editor reaches the pane edges.
             Pane::Editor => {
-                egui::CentralPanel::default().show_inside(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        let selected_label = editor
-                            .selected
-                            .map(|index| editor.label(index))
-                            .unwrap_or_else(|| String::from("select a shader"));
-                        egui::ComboBox::from_id_salt("shader_select")
-                            .selected_text(selected_label)
-                            .show_ui(ui, |ui| {
-                                for index in 0..editor.files.len() {
-                                    let checked = editor.selected == Some(index);
-                                    if ui.selectable_label(checked, editor.label(index)).clicked() {
-                                        *action = Some(Action::Select(index));
+                let frame = egui::Frame::new().fill(ui.visuals().panel_fill);
+                egui::CentralPanel::default().frame(frame).show_inside(ui, |ui| {
+                    egui::Frame::new().inner_margin(8).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let selected_label = editor
+                                .selected
+                                .map(|index| editor.label(index))
+                                .unwrap_or_else(|| String::from("select a shader"));
+                            egui::ComboBox::from_id_salt("shader_select")
+                                .selected_text(selected_label)
+                                .show_ui(ui, |ui| {
+                                    for index in 0..editor.files.len() {
+                                        let checked = editor.selected == Some(index);
+                                        if ui
+                                            .selectable_label(checked, editor.label(index))
+                                            .clicked()
+                                        {
+                                            *action = Some(Action::Select(index));
+                                        }
                                     }
-                                }
-                            });
-                        let save = ui.add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
-                        if save.clicked() {
-                            *action = Some(Action::Save);
+                                });
+                            let save =
+                                ui.add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
+                            if save.clicked() {
+                                *action = Some(Action::Save);
+                            }
+                        });
+
+                        ui.horizontal(|ui| {
+                            let name = egui::TextEdit::singleline(&mut editor.new_name)
+                                .hint_text("new_shader_name")
+                                .desired_width(180.0);
+                            ui.add(name);
+                            if ui.button("create").clicked() && !editor.new_name.trim().is_empty() {
+                                *action = Some(Action::Create);
+                            }
+                        });
+                        if let Some(status) = &editor.status {
+                            ui.colored_label(egui::Color32::LIGHT_RED, status);
                         }
                     });
 
-                    ui.horizontal(|ui| {
-                        let name = egui::TextEdit::singleline(&mut editor.new_name)
-                            .hint_text("new_shader_name")
-                            .desired_width(180.0);
-                        ui.add(name);
-                        if ui.button("create").clicked() && !editor.new_name.trim().is_empty() {
-                            *action = Some(Action::Create);
-                        }
-                    });
-                    if let Some(status) = &editor.status {
-                        ui.colored_label(egui::Color32::LIGHT_RED, status);
-                    }
-
-                    let theme =
-                        egui_extras::syntax_highlighting::CodeTheme::from_memory(ui.ctx(), ui.style());
+                    // The code editor fills the rest of the pane, flush to the
+                    // left, right and bottom edges; its own inner text margin is
+                    // enough, so an extra panel margin just looks noisy.
+                    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                        ui.ctx(),
+                        ui.style(),
+                    );
                     let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
                         // The simple built-in highlighter has no WGSL grammar;
                         // Rust's is close enough (fn/let/var/struct/return/comments).
@@ -260,6 +274,7 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                             ui.available_size(),
                             egui::TextEdit::multiline(&mut editor.buffer)
                                 .code_editor()
+                                .margin(ui.spacing().window_margin)
                                 .lock_focus(true)
                                 .layouter(&mut layouter),
                         );
