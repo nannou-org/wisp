@@ -11,6 +11,9 @@ categories = ["game-development", "graphics", "rendering"]
 license = "MIT OR Apache-2.0"
 edition = "2024"
 
+[workspace]
+members = ["editor"]
+
 [dependencies]
 # Pinned to the Bevy 0.19 release candidates while awaiting the stable release;
 # the first crates.io release follows Bevy 0.19 stable.
@@ -34,12 +37,6 @@ thiserror = "2"
 [dev-dependencies]
 # The examples want windowing, winit and friends.
 bevy = { version = "0.19.0-rc.2" }
-# Platform data dir for the editor example's user shaders.
-dirs = "6"
-# Syntax highlighting for the editor example. Kept in lockstep with the `egui`
-# used by `bevy_egui`.
-egui_extras = { version = "0.34", default-features = false }
-egui_tiles = "0.15"
 
 [features]
 # Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
@@ -54,9 +51,16 @@ name = "audio"
 required-features = ["audio"]
 
 [[example]]
-name = "editor"
-required-features = ["ui"]
-
-[[example]]
 name = "ui"
 required-features = ["ui"]
+
+# Size-optimised profile for the wasm build of the editor (see `editor/`).
+# Profiles must live in the workspace root manifest.
+[profile.wasm_release]
+inherits = "release"
+opt-level = 'z'      # optimise for size
+lto = true
+codegen-units = 1
+panic = 'abort'      # drop unwinding to shrink the binary
+strip = true
+debug = false

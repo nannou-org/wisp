@@ -11,3 +11,10 @@ git_release_enable = true
 # Checks API compatibility against the latest published release via
 # cargo-semver-checks (skipped automatically while nothing is published).
 semver_check = true
+
+# The editor is an app, not a library - keep release-plz from versioning,
+# changelogging, tagging or publishing it.
+[[package]]
+name = "wisp-editor"
+release = false
+publish = false

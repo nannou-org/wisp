@@ -11,6 +11,9 @@
 //! bundled shader saves a private copy there that shadows it - and reloads the
 //! shader in place; broken edits keep the last working version on screen while
 //! the error shows in the params pane.
+//!
+//! On the web build there is no user shader directory, so only the bundled
+//! shaders are listed and the save/create controls are disabled.
 
 use bevy::asset::UnapprovedPathMode;
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
@@ -21,6 +24,9 @@ use bevy_wisp::prelude::*;
 use bevy_wisp::ui::{errors_ui, params_ui};
 use std::path::PathBuf;
 
+/// Seed contents for a freshly created shader. Only the native build can
+/// create files, so this is native only.
+#[cfg(not(target_arch = "wasm32"))]
 const NEW_SHADER_TEMPLATE: &str = r#"//! A fresh wisp - edit me.
 
 struct Globals {
@@ -49,29 +55,41 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 /// `embedded://` asset source at startup (see [`register_bundled`]) and shown in
 /// the picker unless a user shader of the same name shadows them.
 const BUNDLED: &[(&str, &str)] = &[
-    ("test_audio", include_str!("../assets/wisp/test_audio.wgsl")),
+    (
+        "test_audio",
+        include_str!("../../assets/wisp/test_audio.wgsl"),
+    ),
     (
         "test_audio_fft",
-        include_str!("../assets/wisp/test_audio_fft.wgsl"),
+        include_str!("../../assets/wisp/test_audio_fft.wgsl"),
     ),
-    ("test_color", include_str!("../assets/wisp/test_color.wgsl")),
+    (
+        "test_color",
+        include_str!("../../assets/wisp/test_color.wgsl"),
+    ),
     (
         "test_compute",
-        include_str!("../assets/wisp/test_compute.wgsl"),
+        include_str!("../../assets/wisp/test_compute.wgsl"),
     ),
-    ("test_float", include_str!("../assets/wisp/test_float.wgsl")),
-    ("test_image", include_str!("../assets/wisp/test_image.wgsl")),
+    (
+        "test_float",
+        include_str!("../../assets/wisp/test_float.wgsl"),
+    ),
+    (
+        "test_image",
+        include_str!("../../assets/wisp/test_image.wgsl"),
+    ),
     (
         "test_inputs",
-        include_str!("../assets/wisp/test_inputs.wgsl"),
+        include_str!("../../assets/wisp/test_inputs.wgsl"),
     ),
     (
         "test_multi_pass_rendering",
-        include_str!("../assets/wisp/test_multi_pass_rendering.wgsl"),
+        include_str!("../../assets/wisp/test_multi_pass_rendering.wgsl"),
     ),
     (
         "test_persistent_buffer",
-        include_str!("../assets/wisp/test_persistent_buffer.wgsl"),
+        include_str!("../../assets/wisp/test_persistent_buffer.wgsl"),
     ),
 ];
 
@@ -95,13 +113,18 @@ enum ShaderSource {
     /// Compiled into the binary; loaded via the `embedded://` asset source.
     Bundled(&'static str),
     /// A file in the user shader dir, loaded by path and saved back there.
+    /// Native only - the web build has no user shader directory.
+    #[cfg(not(target_arch = "wasm32"))]
     User(PathBuf),
 }
 
 /// What the UI asked for this frame, applied after the tree is drawn.
 enum Action {
     Select(usize),
+    /// Save and create write to the user shader dir, so they are native only.
+    #[cfg(not(target_arch = "wasm32"))]
     Save,
+    #[cfg(not(target_arch = "wasm32"))]
     Create,
 }
 
@@ -146,6 +169,9 @@ impl Editor {
                 source: ShaderSource::Bundled(source),
             })
             .collect();
+        // User shaders live on disk, which only exists on native; the web
+        // build lists the bundled shaders alone.
+        #[cfg(not(target_arch = "wasm32"))]
         if let Ok(entries) = std::fs::read_dir(user_shader_dir()) {
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -277,11 +303,17 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                             }
                                         }
                                     });
-                                let save = ui
-                                    .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
-                                if save.clicked() {
+                                // Saving writes to the user shader dir; on the
+                                // web build the button stays visible but disabled.
+                                #[cfg(not(target_arch = "wasm32"))]
+                                if ui
+                                    .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"))
+                                    .clicked()
+                                {
                                     *action = Some(Action::Save);
                                 }
+                                #[cfg(target_arch = "wasm32")]
+                                ui.add_enabled(false, egui::Button::new("save (ctrl+S)"));
                             });
 
                             ui.horizontal(|ui| {
@@ -289,15 +321,22 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                     .hint_text("new_shader_name")
                                     .desired_width(180.0);
                                 ui.add(name);
+                                #[cfg(not(target_arch = "wasm32"))]
                                 if ui.button("create").clicked()
                                     && !editor.new_name.trim().is_empty()
                                 {
                                     *action = Some(Action::Create);
                                 }
+                                #[cfg(target_arch = "wasm32")]
+                                ui.add_enabled(false, egui::Button::new("create"));
                             });
                             if let Some(status) = &editor.status {
                                 ui.colored_label(egui::Color32::LIGHT_RED, status);
                             }
+                            // The user shader dir is native only; make the
+                            // disabled controls above self-explanatory.
+                            #[cfg(target_arch = "wasm32")]
+                            ui.weak("save/create are unavailable on the web build");
                         });
 
                         // The code editor fills the rest of the pane, flush to the
@@ -361,6 +400,9 @@ fn main() {
                 .set(WindowPlugin {
                     primary_window: Some(Window {
                         title: String::from("bevy_wisp - editor"),
+                        // Let the canvas track its parent element on the web
+                        // build; ignored on native.
+                        fit_canvas_to_parent: true,
                         ..default()
                     }),
                     ..default()
@@ -391,6 +433,7 @@ fn main() {
 }
 
 /// The directory user shaders are kept in, e.g. `~/.local/share/wisp`.
+#[cfg(not(target_arch = "wasm32"))]
 fn user_shader_dir() -> PathBuf {
     dirs::data_dir()
         .unwrap_or_else(|| PathBuf::from("."))
@@ -531,6 +574,7 @@ fn select(
             handle = asset_server.load(bundled_asset_path(&file.name));
             (*source).to_owned()
         }
+        #[cfg(not(target_arch = "wasm32"))]
         ShaderSource::User(path) => match std::fs::read_to_string(path) {
             Ok(source) => {
                 handle = asset_server.load(path.clone());
@@ -578,10 +622,13 @@ fn editor_ui(
 
     // ctrl/cmd+S saves. Consumed at the context level rather than inside a
     // pane, so it works no matter which pane has focus (or whether the editor
-    // pane is the visible tab).
-    let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
-    if ctx.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
-        action = Some(Action::Save);
+    // pane is the visible tab). There is nowhere to save to on the web build.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
+        if ctx.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
+            action = Some(Action::Save);
+        }
     }
 
     let wisp = handle.and_then(|handle| wisps.get(&**handle));
@@ -634,6 +681,7 @@ fn editor_ui(
         Some(Action::Select(index)) => {
             select(&mut editor, index, camera, &mut commands, &asset_server);
         }
+        #[cfg(not(target_arch = "wasm32"))]
         Some(Action::Save) => {
             let Some(index) = editor.selected else {
                 return;
@@ -665,6 +713,7 @@ fn editor_ui(
                 }
             }
         }
+        #[cfg(not(target_arch = "wasm32"))]
         Some(Action::Create) => {
             let name = editor.new_name.trim().replace(' ', "_");
             // Never clobber: select an existing shader of that name instead.
