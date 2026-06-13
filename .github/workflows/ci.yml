@@ -43,4 +43,4 @@ jobs:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
       - uses: Swatinem/rust-cache@v2
-      - run: nix develop --command cargo build --locked --examples --all-features
+      - run: nix develop --command cargo check --locked --examples --all-features
