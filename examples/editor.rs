@@ -208,81 +208,86 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
             // are inset; the code editor reaches the pane edges.
             Pane::Editor => {
                 let frame = egui::Frame::new().fill(ui.visuals().panel_fill);
-                egui::CentralPanel::default().frame(frame).show_inside(ui, |ui| {
-                    egui::Frame::new().inner_margin(8).show(ui, |ui| {
-                        ui.horizontal(|ui| {
-                            let selected_label = editor
-                                .selected
-                                .map(|index| editor.label(index))
-                                .unwrap_or_else(|| String::from("select a shader"));
-                            egui::ComboBox::from_id_salt("shader_select")
-                                .selected_text(selected_label)
-                                .show_ui(ui, |ui| {
-                                    for index in 0..editor.files.len() {
-                                        let checked = editor.selected == Some(index);
-                                        if ui
-                                            .selectable_label(checked, editor.label(index))
-                                            .clicked()
-                                        {
-                                            *action = Some(Action::Select(index));
+                egui::CentralPanel::default()
+                    .frame(frame)
+                    .show_inside(ui, |ui| {
+                        egui::Frame::new().inner_margin(8).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let selected_label = editor
+                                    .selected
+                                    .map(|index| editor.label(index))
+                                    .unwrap_or_else(|| String::from("select a shader"));
+                                egui::ComboBox::from_id_salt("shader_select")
+                                    .selected_text(selected_label)
+                                    .show_ui(ui, |ui| {
+                                        for index in 0..editor.files.len() {
+                                            let checked = editor.selected == Some(index);
+                                            if ui
+                                                .selectable_label(checked, editor.label(index))
+                                                .clicked()
+                                            {
+                                                *action = Some(Action::Select(index));
+                                            }
                                         }
-                                    }
-                                });
-                            let save =
-                                ui.add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
-                            if save.clicked() {
-                                *action = Some(Action::Save);
+                                    });
+                                let save = ui
+                                    .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
+                                if save.clicked() {
+                                    *action = Some(Action::Save);
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                let name = egui::TextEdit::singleline(&mut editor.new_name)
+                                    .hint_text("new_shader_name")
+                                    .desired_width(180.0);
+                                ui.add(name);
+                                if ui.button("create").clicked()
+                                    && !editor.new_name.trim().is_empty()
+                                {
+                                    *action = Some(Action::Create);
+                                }
+                            });
+                            if let Some(status) = &editor.status {
+                                ui.colored_label(egui::Color32::LIGHT_RED, status);
                             }
                         });
 
-                        ui.horizontal(|ui| {
-                            let name = egui::TextEdit::singleline(&mut editor.new_name)
-                                .hint_text("new_shader_name")
-                                .desired_width(180.0);
-                            ui.add(name);
-                            if ui.button("create").clicked() && !editor.new_name.trim().is_empty() {
-                                *action = Some(Action::Create);
-                            }
-                        });
-                        if let Some(status) = &editor.status {
-                            ui.colored_label(egui::Color32::LIGHT_RED, status);
-                        }
-                    });
-
-                    // The code editor fills the rest of the pane, flush to the
-                    // left, right and bottom edges; its own inner text margin is
-                    // enough, so an extra panel margin just looks noisy.
-                    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
-                        ui.ctx(),
-                        ui.style(),
-                    );
-                    let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                        // The simple built-in highlighter has no WGSL grammar;
-                        // Rust's is close enough (fn/let/var/struct/return/comments).
-                        let mut job = egui_extras::syntax_highlighting::highlight(
+                        // The code editor fills the rest of the pane, flush to the
+                        // left, right and bottom edges; its own inner text margin is
+                        // enough, so an extra panel margin just looks noisy.
+                        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
                             ui.ctx(),
                             ui.style(),
-                            &theme,
-                            buf.as_str(),
-                            "rs",
                         );
-                        job.wrap.max_width = wrap_width;
-                        ui.fonts_mut(|fonts| fonts.layout_job(job))
-                    };
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        let response = ui.add_sized(
-                            ui.available_size(),
-                            egui::TextEdit::multiline(&mut editor.buffer)
-                                .code_editor()
-                                .margin(ui.spacing().window_margin)
-                                .lock_focus(true)
-                                .layouter(&mut layouter),
-                        );
-                        if response.changed() {
-                            editor.dirty = true;
-                        }
+                        let mut layouter =
+                            |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                                // The simple built-in highlighter has no WGSL grammar;
+                                // Rust's is close enough (fn/let/var/struct/return/comments).
+                                let mut job = egui_extras::syntax_highlighting::highlight(
+                                    ui.ctx(),
+                                    ui.style(),
+                                    &theme,
+                                    buf.as_str(),
+                                    "rs",
+                                );
+                                job.wrap.max_width = wrap_width;
+                                ui.fonts_mut(|fonts| fonts.layout_job(job))
+                            };
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let response = ui.add_sized(
+                                ui.available_size(),
+                                egui::TextEdit::multiline(&mut editor.buffer)
+                                    .code_editor()
+                                    .margin(ui.spacing().window_margin)
+                                    .lock_focus(true)
+                                    .layouter(&mut layouter),
+                            );
+                            if response.changed() {
+                                editor.dirty = true;
+                            }
+                        });
                     });
-                });
             }
         }
         egui_tiles::UiResponse::None
@@ -512,7 +517,10 @@ fn editor_ui(
             let rect = rect.intersect(ctx.content_rect());
             let scale = ctx.pixels_per_point();
             let position = UVec2::new((rect.min.x * scale) as u32, (rect.min.y * scale) as u32);
-            let size = UVec2::new((rect.width() * scale) as u32, (rect.height() * scale) as u32);
+            let size = UVec2::new(
+                (rect.width() * scale) as u32,
+                (rect.height() * scale) as u32,
+            );
             if size.x > 0 && size.y > 0 {
                 camera_config.viewport = Some(Viewport {
                     physical_position: position,
