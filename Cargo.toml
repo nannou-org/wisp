@@ -39,6 +39,7 @@ dirs = "6"
 # Syntax highlighting for the editor example. Kept in lockstep with the `egui`
 # used by `bevy_egui`.
 egui_extras = { version = "0.34", default-features = false }
+egui_tiles = "0.15"
 
 [features]
 # Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
