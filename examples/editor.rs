@@ -1,12 +1,15 @@
 //! A minimal live-coding editor for wisp shaders.
 //!
-//! The left panel holds the param widgets and a monospace code editor with
-//! syntax highlighting; the shader renders in the space to the right (the
-//! camera viewport follows the panel). Pick one of the bundled shaders or
-//! create your own - user shaders live in the platform data directory (e.g.
-//! `~/.local/share/wisp` on Linux). Saving (button or ctrl/cmd+S) writes the
-//! file and reloads the shader in place; broken edits keep the last working
-//! version on screen while the error shows in the panel.
+//! The UI is a re-arrangeable `egui_tiles` layout of three panes: a monospace
+//! code editor with syntax highlighting (and the file controls), the shader
+//! param widgets, and the shader view itself. Drag a tab header to re-arrange
+//! the panes; the shader pane hides its tab when it sits alone so its view
+//! stays clean (the camera viewport follows that pane). Pick one of the
+//! bundled shaders or create your own - user shaders live in the platform data
+//! directory (e.g. `~/.local/share/wisp` on Linux). Saving (button or
+//! ctrl/cmd+S) writes the file and reloads the shader in place; broken edits
+//! keep the last working version on screen while the error shows in the
+//! params pane.
 
 use bevy::asset::UnapprovedPathMode;
 use bevy::camera::Viewport;
@@ -56,11 +59,41 @@ struct ShaderFile {
     user: bool,
 }
 
-/// What the UI asked for this frame, applied after the panel closure.
+/// What the UI asked for this frame, applied after the tree is drawn.
 enum Action {
     Select(usize),
     Save,
     Create,
+}
+
+/// The re-arrangeable panes of the editor layout.
+#[derive(PartialEq)]
+enum Pane {
+    /// The code editor and shader file controls.
+    Editor,
+    /// The reflected shader param widgets and any load/pipeline errors.
+    Params,
+    /// The shader view itself; painted nothing so the wisp camera shows
+    /// through, and its tab is hidden whenever it sits alone.
+    Shader,
+}
+
+/// Holds the tile layout for the process lifetime (no persistence).
+#[derive(Resource)]
+struct EditorTree(egui_tiles::Tree<Pane>);
+
+/// Draws each pane and collects what the UI asked for this frame.
+///
+/// Borrows the editor state and shader inputs so the pane closures can mutate
+/// them while `egui_tiles` owns the surrounding `Ui`.
+struct TreeBehavior<'a> {
+    editor: &'a mut Editor,
+    errors: &'a WispErrors,
+    wisp: Option<&'a Wisp>,
+    inputs: Option<&'a mut WispInputs>,
+    action: &'a mut Option<Action>,
+    /// Set to the shader pane's rect so the camera viewport can follow it.
+    shader_rect: &'a mut Option<egui::Rect>,
 }
 
 impl Editor {
@@ -94,6 +127,170 @@ impl Editor {
             true => format!("{} (user)", file.name),
             false => file.name.clone(),
         }
+    }
+}
+
+impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
+    fn tab_title_for_pane(&mut self, pane: &Pane) -> egui::WidgetText {
+        match pane {
+            Pane::Editor => "editor".into(),
+            Pane::Params => "params".into(),
+            // Only ever visible while a tile is being dragged.
+            Pane::Shader => "shader".into(),
+        }
+    }
+
+    // The tab bar matches the panel fill so it looks continuous with the panes.
+    fn tab_bar_color(&self, visuals: &egui::Visuals) -> egui::Color32 {
+        visuals.panel_fill
+    }
+
+    fn resize_stroke(
+        &self,
+        style: &egui::Style,
+        _resize_state: egui_tiles::ResizeState,
+    ) -> egui::Stroke {
+        egui::Stroke::new(2.0, style.visuals.extreme_bg_color)
+    }
+
+    fn tab_outline_stroke(
+        &self,
+        _visuals: &egui::Visuals,
+        _tiles: &egui_tiles::Tiles<Pane>,
+        _tile_id: egui_tiles::TileId,
+        _state: &egui_tiles::TabState,
+    ) -> egui::Stroke {
+        egui::Stroke::NONE
+    }
+
+    fn simplification_options(&self) -> egui_tiles::SimplificationOptions {
+        // We simplify manually before `tree.ui`, so `tree.ui` should not.
+        egui_tiles::SimplificationOptions::OFF
+    }
+
+    fn pane_ui(
+        &mut self,
+        ui: &mut egui::Ui,
+        _tile_id: egui_tiles::TileId,
+        pane: &mut Pane,
+    ) -> egui_tiles::UiResponse {
+        // Reborrow the fields so the pane closures can capture them
+        // individually rather than borrowing all of `self` at once.
+        let editor = &mut *self.editor;
+        let action = &mut *self.action;
+        let errors = self.errors;
+        let wisp = self.wisp;
+        let inputs = self.inputs.as_deref_mut();
+        match pane {
+            // Painted nothing: the wisp camera renders through this pane, and
+            // the camera viewport is fitted to its rect after the tree draws.
+            Pane::Shader => *self.shader_rect = Some(ui.max_rect()),
+            // The shader params, with any load/pipeline errors below them.
+            Pane::Params => {
+                egui::CentralPanel::default().show_inside(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false; 2])
+                        .show(ui, |ui| {
+                            if let (Some(wisp), Some(inputs)) = (wisp, inputs)
+                                && wisp.schema.params.is_some()
+                            {
+                                params_ui(ui, &wisp.schema, inputs);
+                            }
+                            if !errors.is_empty() {
+                                ui.separator();
+                                errors_ui(ui, errors);
+                            }
+                        });
+                });
+            }
+            // The file controls sit above the code editor. The pane paints its
+            // own opaque background with no outer margin, so only the controls
+            // are inset; the code editor reaches the pane edges.
+            Pane::Editor => {
+                let frame = egui::Frame::new().fill(ui.visuals().panel_fill);
+                egui::CentralPanel::default()
+                    .frame(frame)
+                    .show_inside(ui, |ui| {
+                        egui::Frame::new().inner_margin(8).show(ui, |ui| {
+                            ui.horizontal(|ui| {
+                                let selected_label = editor
+                                    .selected
+                                    .map(|index| editor.label(index))
+                                    .unwrap_or_else(|| String::from("select a shader"));
+                                egui::ComboBox::from_id_salt("shader_select")
+                                    .selected_text(selected_label)
+                                    .show_ui(ui, |ui| {
+                                        for index in 0..editor.files.len() {
+                                            let checked = editor.selected == Some(index);
+                                            if ui
+                                                .selectable_label(checked, editor.label(index))
+                                                .clicked()
+                                            {
+                                                *action = Some(Action::Select(index));
+                                            }
+                                        }
+                                    });
+                                let save = ui
+                                    .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
+                                if save.clicked() {
+                                    *action = Some(Action::Save);
+                                }
+                            });
+
+                            ui.horizontal(|ui| {
+                                let name = egui::TextEdit::singleline(&mut editor.new_name)
+                                    .hint_text("new_shader_name")
+                                    .desired_width(180.0);
+                                ui.add(name);
+                                if ui.button("create").clicked()
+                                    && !editor.new_name.trim().is_empty()
+                                {
+                                    *action = Some(Action::Create);
+                                }
+                            });
+                            if let Some(status) = &editor.status {
+                                ui.colored_label(egui::Color32::LIGHT_RED, status);
+                            }
+                        });
+
+                        // The code editor fills the rest of the pane, flush to the
+                        // left, right and bottom edges; its own inner text margin is
+                        // enough, so an extra panel margin just looks noisy.
+                        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                            ui.ctx(),
+                            ui.style(),
+                        );
+                        let mut layouter =
+                            |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                                // The simple built-in highlighter has no WGSL grammar;
+                                // Rust's is close enough (fn/let/var/struct/return/comments).
+                                let mut job = egui_extras::syntax_highlighting::highlight(
+                                    ui.ctx(),
+                                    ui.style(),
+                                    &theme,
+                                    buf.as_str(),
+                                    "rs",
+                                );
+                                job.wrap.max_width = wrap_width;
+                                ui.fonts_mut(|fonts| fonts.layout_job(job))
+                            };
+                        egui::ScrollArea::vertical().show(ui, |ui| {
+                            let response = ui.add_sized(
+                                ui.available_size(),
+                                egui::TextEdit::multiline(&mut editor.buffer)
+                                    .code_editor()
+                                    .margin(ui.spacing().window_margin)
+                                    .lock_focus(true)
+                                    .layouter(&mut layouter),
+                            );
+                            if response.changed() {
+                                editor.dirty = true;
+                            }
+                        });
+                    });
+            }
+        }
+        egui_tiles::UiResponse::None
     }
 }
 
@@ -179,6 +376,57 @@ fn setup(
         select(&mut editor, index, camera, &mut commands, &asset_server);
     }
     commands.insert_resource(editor);
+    commands.insert_resource(EditorTree(create_tree()));
+}
+
+/// The default tile layout: the code editor above the params on the left, with
+/// the shader view filling the larger pane on the right.
+fn create_tree() -> egui_tiles::Tree<Pane> {
+    let mut tiles = egui_tiles::Tiles::default();
+    let editor = tiles.insert_pane(Pane::Editor);
+    let params = tiles.insert_pane(Pane::Params);
+    let shader = tiles.insert_pane(Pane::Shader);
+    let left = tiles.insert_container(egui_tiles::Linear::new_binary(
+        egui_tiles::LinearDir::Vertical,
+        [editor, params],
+        0.65,
+    ));
+    let root = tiles.insert_container(egui_tiles::Linear::new_binary(
+        egui_tiles::LinearDir::Horizontal,
+        [left, shader],
+        0.35,
+    ));
+    egui_tiles::Tree::new("wisp_editor_tree", root, tiles)
+}
+
+/// Keep every pane tabbed, but hide the shader pane's tab bar while it sits
+/// alone so its view stays clean.
+///
+/// During a drag all tab bars stay visible (including the shader's) so a pane
+/// can be dropped alongside it.
+fn simplify_tree(tree: &mut egui_tiles::Tree<Pane>, ctx: &egui::Context) {
+    tree.simplify(&egui_tiles::SimplificationOptions {
+        all_panes_must_have_tabs: true,
+        ..Default::default()
+    });
+    if tree.dragged_id(ctx).is_some() {
+        return;
+    }
+    // Replace the lone shader tab container with the bare pane.
+    let Some(shader_id) = tree.tiles.find_pane(&Pane::Shader) else {
+        return;
+    };
+    let Some(parent_id) = tree.tiles.parent_of(shader_id) else {
+        return;
+    };
+    let Some(parent) = tree.tiles.get_container(parent_id) else {
+        return;
+    };
+    if parent.num_children() == 1 {
+        tree.tiles.remove(shader_id);
+        tree.tiles
+            .insert(parent_id, egui_tiles::Tile::Pane(Pane::Shader));
+    }
 }
 
 /// Load a shader into the editor buffer and onto the camera.
@@ -208,6 +456,7 @@ fn editor_ui(
     mut commands: Commands,
     mut contexts: EguiContexts,
     mut editor: ResMut<Editor>,
+    mut tree: ResMut<EditorTree>,
     asset_server: Res<AssetServer>,
     wisps: Res<Assets<Wisp>>,
     errors: Res<WispErrors>,
@@ -228,115 +477,58 @@ fn editor_ui(
         return;
     };
     let mut action = None;
-    // Top-level `Panel::show` is deprecated mid-transition in egui 0.34 (the
-    // replacement `show_inside` wants a root `Ui` that bevy_egui's single-pass
-    // mode doesn't expose); revisit alongside the multi-pass migration.
+
+    // ctrl/cmd+S saves. Consumed at the context level rather than inside a
+    // pane, so it works no matter which pane has focus (or whether the editor
+    // pane is the visible tab).
+    let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
+    if ctx.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
+        action = Some(Action::Save);
+    }
+
+    let wisp = handle.and_then(|handle| wisps.get(&**handle));
+    let mut shader_rect = None;
+    simplify_tree(&mut tree.0, ctx);
+    // Top-level `CentralPanel::show` is deprecated mid-transition in egui 0.34
+    // (the replacement `show_inside` wants a root `Ui` that bevy_egui's
+    // single-pass mode doesn't expose); revisit alongside the multi-pass
+    // migration. The host frame is transparent so the shader pane reveals the
+    // wisp camera and each other pane paints its own background.
     #[allow(deprecated)]
-    let panel = egui::Panel::left("wisp_editor")
-        .resizable(true)
-        .default_size(460.0)
-        .show(ctx, |ui| {
-            // ctrl/cmd+S saves.
-            let save_shortcut = egui::KeyboardShortcut::new(egui::Modifiers::COMMAND, egui::Key::S);
-            if ui.input_mut(|input| input.consume_shortcut(&save_shortcut)) {
-                action = Some(Action::Save);
+    egui::CentralPanel::no_frame().show(ctx, |ui| {
+        let mut behavior = TreeBehavior {
+            editor: &mut editor,
+            errors: &errors,
+            wisp,
+            inputs: inputs.as_deref_mut(),
+            action: &mut action,
+            shader_rect: &mut shader_rect,
+        };
+        tree.0.ui(&mut behavior, ui);
+    });
+
+    // The shader camera follows the shader pane. When that pane is hidden as an
+    // inactive tab there is no rect, so the camera goes inactive rather than
+    // leaving a stale viewport behind.
+    match shader_rect {
+        None => camera_config.is_active = false,
+        Some(rect) => {
+            camera_config.is_active = true;
+            let rect = rect.intersect(ctx.content_rect());
+            let scale = ctx.pixels_per_point();
+            let position = UVec2::new((rect.min.x * scale) as u32, (rect.min.y * scale) as u32);
+            let size = UVec2::new(
+                (rect.width() * scale) as u32,
+                (rect.height() * scale) as u32,
+            );
+            if size.x > 0 && size.y > 0 {
+                camera_config.viewport = Some(Viewport {
+                    physical_position: position,
+                    physical_size: size,
+                    ..default()
+                });
             }
-
-            ui.horizontal(|ui| {
-                let selected_label = editor
-                    .selected
-                    .map(|index| editor.label(index))
-                    .unwrap_or_else(|| String::from("select a shader"));
-                egui::ComboBox::from_id_salt("shader_select")
-                    .selected_text(selected_label)
-                    .show_ui(ui, |ui| {
-                        for index in 0..editor.files.len() {
-                            let checked = editor.selected == Some(index);
-                            if ui.selectable_label(checked, editor.label(index)).clicked() {
-                                action = Some(Action::Select(index));
-                            }
-                        }
-                    });
-                let save = ui.add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"));
-                if save.clicked() {
-                    action = Some(Action::Save);
-                }
-            });
-
-            ui.horizontal(|ui| {
-                let name = egui::TextEdit::singleline(&mut editor.new_name)
-                    .hint_text("new_shader_name")
-                    .desired_width(180.0);
-                ui.add(name);
-                if ui.button("create").clicked() && !editor.new_name.trim().is_empty() {
-                    action = Some(Action::Create);
-                }
-            });
-            if let Some(status) = &editor.status {
-                ui.colored_label(egui::Color32::LIGHT_RED, status);
-            }
-            ui.separator();
-
-            // Wisp's params/errors widgets, embedded above the code editor.
-            errors_ui(ui, &errors);
-            if let (Some(handle), Some(inputs)) = (handle, inputs.as_mut())
-                && let Some(wisp) = wisps.get(&**handle)
-                && wisp.schema.params.is_some()
-            {
-                egui::CollapsingHeader::new("params")
-                    .default_open(true)
-                    .show(ui, |ui| params_ui(ui, &wisp.schema, inputs));
-                ui.separator();
-            }
-
-            let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(ctx, ui.style());
-            let mut layouter = |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                // The simple built-in highlighter has no WGSL grammar; Rust's
-                // is close enough (fn/let/var/struct/return/comments).
-                let mut job = egui_extras::syntax_highlighting::highlight(
-                    ui.ctx(),
-                    ui.style(),
-                    &theme,
-                    buf.as_str(),
-                    "rs",
-                );
-                job.wrap.max_width = wrap_width;
-                ui.fonts_mut(|fonts| fonts.layout_job(job))
-            };
-            egui::ScrollArea::vertical().show(ui, |ui| {
-                let response = ui.add_sized(
-                    ui.available_size(),
-                    egui::TextEdit::multiline(&mut editor.buffer)
-                        .code_editor()
-                        .lock_focus(true)
-                        .layouter(&mut layouter),
-                );
-                if response.changed() {
-                    editor.dirty = true;
-                }
-            });
-        });
-
-    // The shader renders in whatever space the panel leaves over.
-    let content = ctx.content_rect();
-    let scale = ctx.pixels_per_point();
-    let panel_edge = panel
-        .response
-        .rect
-        .max
-        .x
-        .clamp(content.min.x, content.max.x);
-    let position = UVec2::new((panel_edge * scale) as u32, (content.min.y * scale) as u32);
-    let size = UVec2::new(
-        ((content.max.x - panel_edge) * scale) as u32,
-        (content.height() * scale) as u32,
-    );
-    if size.x > 0 && size.y > 0 {
-        camera_config.viewport = Some(Viewport {
-            physical_position: position,
-            physical_size: size,
-            ..default()
-        });
+        }
     }
 
     match action {
