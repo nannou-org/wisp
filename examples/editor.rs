@@ -322,11 +322,24 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
                                 ui.fonts_mut(|fonts| fonts.layout_job(job))
                             };
                         egui::ScrollArea::vertical().show(ui, |ui| {
+                            // Freeze the text edit's frame at its resting look.
+                            // Left to itself the ~1px outline brightens on hover
+                            // and turns the accent colour on focus (egui picks
+                            // `widgets.hovered`/`selection.stroke`); passing an
+                            // explicit `Frame` takes it off that state-driven
+                            // path, so the code editor stops flickering as the
+                            // pointer crosses it or it gains focus.
+                            let resting = ui.visuals().widgets.inactive;
+                            let frame = egui::Frame::new()
+                                .fill(ui.visuals().text_edit_bg_color())
+                                .stroke(resting.bg_stroke)
+                                .corner_radius(resting.corner_radius)
+                                .inner_margin(ui.spacing().window_margin);
                             let response = ui.add_sized(
                                 ui.available_size(),
                                 egui::TextEdit::multiline(&mut editor.buffer)
                                     .code_editor()
-                                    .margin(ui.spacing().window_margin)
+                                    .frame(frame)
                                     .lock_focus(true)
                                     .layouter(&mut layouter),
                             );
