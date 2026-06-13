@@ -5,19 +5,21 @@
 //! param widgets, and the shader view itself. Drag a tab header to re-arrange
 //! the panes; the shader pane hides its tab when it sits alone so its view
 //! stays clean (the camera viewport follows that pane). Pick one of the
-//! bundled shaders or create your own - user shaders live in the platform data
-//! directory (e.g. `~/.local/share/wisp` on Linux). Saving (button or
-//! ctrl/cmd+S) writes the file and reloads the shader in place; broken edits
-//! keep the last working version on screen while the error shows in the
-//! params pane.
+//! bundled shaders (compiled into the binary, so no assets dir is needed at
+//! runtime) or create your own. Saving (button or ctrl/cmd+S) always writes to
+//! the user shader directory (e.g. `~/.local/share/wisp` on Linux) - editing a
+//! bundled shader saves a private copy there that shadows it - and reloads the
+//! shader in place; broken edits keep the last working version on screen while
+//! the error shows in the params pane.
 
 use bevy::asset::UnapprovedPathMode;
+use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
 use bevy_wisp::prelude::*;
 use bevy_wisp::ui::{errors_ui, params_ui};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const NEW_SHADER_TEMPLATE: &str = r#"//! A fresh wisp - edit me.
 
@@ -43,6 +45,36 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
+/// The shaders compiled into the binary. They are registered with the
+/// `embedded://` asset source at startup (see [`register_bundled`]) and shown in
+/// the picker unless a user shader of the same name shadows them.
+const BUNDLED: &[(&str, &str)] = &[
+    ("test_audio", include_str!("../assets/wisp/test_audio.wgsl")),
+    (
+        "test_audio_fft",
+        include_str!("../assets/wisp/test_audio_fft.wgsl"),
+    ),
+    ("test_color", include_str!("../assets/wisp/test_color.wgsl")),
+    (
+        "test_compute",
+        include_str!("../assets/wisp/test_compute.wgsl"),
+    ),
+    ("test_float", include_str!("../assets/wisp/test_float.wgsl")),
+    ("test_image", include_str!("../assets/wisp/test_image.wgsl")),
+    (
+        "test_inputs",
+        include_str!("../assets/wisp/test_inputs.wgsl"),
+    ),
+    (
+        "test_multi_pass_rendering",
+        include_str!("../assets/wisp/test_multi_pass_rendering.wgsl"),
+    ),
+    (
+        "test_persistent_buffer",
+        include_str!("../assets/wisp/test_persistent_buffer.wgsl"),
+    ),
+];
+
 #[derive(Resource)]
 struct Editor {
     files: Vec<ShaderFile>,
@@ -55,8 +87,15 @@ struct Editor {
 
 struct ShaderFile {
     name: String,
-    path: PathBuf,
-    user: bool,
+    source: ShaderSource,
+}
+
+/// Where a shader's source comes from.
+enum ShaderSource {
+    /// Compiled into the binary; loaded via the `embedded://` asset source.
+    Bundled(&'static str),
+    /// A file in the user shader dir, loaded by path and saved back there.
+    User(PathBuf),
 }
 
 /// What the UI asked for this frame, applied after the tree is drawn.
@@ -97,36 +136,39 @@ struct TreeBehavior<'a> {
 }
 
 impl Editor {
+    /// The bundled shaders plus any user shaders, sorted by name. A user file
+    /// shadows the bundled shader of the same name.
     fn scan() -> Vec<ShaderFile> {
-        let mut files = Vec::new();
-        let bundled = Path::new(env!("CARGO_MANIFEST_DIR")).join("assets/wisp");
-        for (dir, user) in [(bundled, false), (user_shader_dir(), true)] {
-            let Ok(entries) = std::fs::read_dir(&dir) else {
-                continue;
-            };
+        let mut files: Vec<ShaderFile> = BUNDLED
+            .iter()
+            .map(|&(name, source)| ShaderFile {
+                name: name.to_owned(),
+                source: ShaderSource::Bundled(source),
+            })
+            .collect();
+        if let Ok(entries) = std::fs::read_dir(user_shader_dir()) {
             for entry in entries.flatten() {
                 let path = entry.path();
                 if path.extension().is_some_and(|ext| ext == "wgsl")
                     && let Some(stem) = path.file_stem()
                 {
-                    files.push(ShaderFile {
-                        name: stem.to_string_lossy().into_owned(),
-                        path,
-                        user,
-                    });
+                    let name = stem.to_string_lossy().into_owned();
+                    match files.iter_mut().find(|file| file.name == name) {
+                        Some(file) => file.source = ShaderSource::User(path),
+                        None => files.push(ShaderFile {
+                            name,
+                            source: ShaderSource::User(path),
+                        }),
+                    }
                 }
             }
         }
-        files.sort_by(|a, b| (a.user, &a.name).cmp(&(b.user, &b.name)));
+        files.sort_by(|a, b| a.name.cmp(&b.name));
         files
     }
 
     fn label(&self, index: usize) -> String {
-        let file = &self.files[index];
-        match file.user {
-            true => format!("{} (user)", file.name),
-            false => file.name.clone(),
-        }
+        self.files[index].name.clone()
     }
 }
 
@@ -337,11 +379,28 @@ fn user_shader_dir() -> PathBuf {
         .join("wisp")
 }
 
+/// The `embedded://` asset path a bundled shader of the given name loads from.
+fn bundled_asset_path(name: &str) -> String {
+    format!("embedded://wisp/{name}.wgsl")
+}
+
+/// Register the bundled shader sources with the `embedded://` asset source so
+/// they load through [`Wisp`]'s loader without relying on the assets dir.
+fn register_bundled(embedded: &EmbeddedAssetRegistry) {
+    for &(name, source) in BUNDLED {
+        let asset_path = PathBuf::from(format!("wisp/{name}.wgsl"));
+        // `full_path` is only consulted by the embedded-file watcher (off here).
+        embedded.insert_asset(PathBuf::new(), &asset_path, source.as_bytes());
+    }
+}
+
 fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
+    embedded: Res<EmbeddedAssetRegistry>,
     mut egui_settings: ResMut<bevy_egui::EguiGlobalSettings>,
 ) {
+    register_bundled(&embedded);
     // The egui UI gets its own full-window camera: bevy_egui sizes a context
     // to its camera's viewport, so hosting the UI on the wisp camera (whose
     // viewport follows the panel) would shrink the UI along with it.
@@ -438,17 +497,28 @@ fn select(
     asset_server: &AssetServer,
 ) {
     let file = &editor.files[index];
-    match std::fs::read_to_string(&file.path) {
-        Ok(source) => {
-            editor.buffer = source;
-            editor.selected = Some(index);
-            editor.dirty = false;
-            editor.status = None;
-            let wisp: Handle<Wisp> = asset_server.load(file.path.clone());
-            commands.entity(camera).insert(WispHandle(wisp));
+    let handle: Handle<Wisp>;
+    let source = match &file.source {
+        ShaderSource::Bundled(source) => {
+            handle = asset_server.load(bundled_asset_path(&file.name));
+            (*source).to_owned()
         }
-        Err(err) => editor.status = Some(format!("failed to read {}: {err}", file.path.display())),
-    }
+        ShaderSource::User(path) => match std::fs::read_to_string(path) {
+            Ok(source) => {
+                handle = asset_server.load(path.clone());
+                source
+            }
+            Err(err) => {
+                editor.status = Some(format!("failed to read {}: {err}", path.display()));
+                return;
+            }
+        },
+    };
+    editor.buffer = source;
+    editor.selected = Some(index);
+    editor.dirty = false;
+    editor.status = None;
+    commands.entity(camera).insert(WispHandle(handle));
 }
 
 #[allow(clippy::too_many_arguments, clippy::type_complexity)]
@@ -540,14 +610,27 @@ fn editor_ui(
             let Some(index) = editor.selected else {
                 return;
             };
-            let path = editor.files[index].path.clone();
-            match std::fs::write(&path, &editor.buffer) {
+            // Always save to the user dir, never back to the bundled sources.
+            let name = editor.files[index].name.clone();
+            let dir = user_shader_dir();
+            let path = dir.join(format!("{name}.wgsl"));
+            let written =
+                std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, &editor.buffer));
+            match written {
                 Ok(()) => {
                     editor.dirty = false;
                     editor.status = None;
-                    // Re-runs the loader; errors surface via wisp's panel while
-                    // the previous working shader keeps rendering.
-                    asset_server.reload(path);
+                    if matches!(editor.files[index].source, ShaderSource::Bundled(_)) {
+                        // First save of a bundled shader: the user copy now
+                        // shadows it, so point the camera at the new file.
+                        editor.files[index].source = ShaderSource::User(path.clone());
+                        let handle: Handle<Wisp> = asset_server.load(path);
+                        commands.entity(camera).insert(WispHandle(handle));
+                    } else {
+                        // Re-runs the loader; errors surface via wisp's panel
+                        // while the previous working shader keeps rendering.
+                        asset_server.reload(path);
+                    }
                 }
                 Err(err) => {
                     editor.status = Some(format!("failed to write {}: {err}", path.display()));
@@ -556,21 +639,20 @@ fn editor_ui(
         }
         Some(Action::Create) => {
             let name = editor.new_name.trim().replace(' ', "_");
-            let dir = user_shader_dir();
-            let path = dir.join(format!("{name}.wgsl"));
-            // Never clobber: select the existing file of that name instead.
-            if let Some(existing) = editor.files.iter().position(|file| file.path == path) {
+            // Never clobber: select an existing shader of that name instead.
+            if let Some(existing) = editor.files.iter().position(|file| file.name == name) {
                 select(&mut editor, existing, camera, &mut commands, &asset_server);
                 return;
             }
+            let dir = user_shader_dir();
+            let path = dir.join(format!("{name}.wgsl"));
             let written = std::fs::create_dir_all(&dir)
                 .and_then(|()| std::fs::write(&path, NEW_SHADER_TEMPLATE));
             match written {
                 Ok(()) => {
                     editor.files.push(ShaderFile {
                         name,
-                        path,
-                        user: true,
+                        source: ShaderSource::User(path),
                     });
                     editor.new_name.clear();
                     let index = editor.files.len() - 1;
