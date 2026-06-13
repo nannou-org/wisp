@@ -17,9 +17,11 @@
 //! bundled ones: their source is (re)inserted into the embedded registry, so no
 //! filesystem is involved and the create/save controls work on the web too.
 
+use bevy::asset::RenderAssetUsages;
 use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use bevy_egui::{EguiContexts, EguiPlugin, egui};
 use bevy_pkv::PkvStore;
 use bevy_wisp::prelude::*;
@@ -105,6 +107,12 @@ const SHADER_INDEX_KEY: &str = "shaders";
 /// supplies the [`Resource`] impl.
 #[derive(Resource)]
 struct Pkv(PkvStore);
+
+/// A built-in image bound to every `@image` shader input the user has not set.
+/// Without it those inputs keep bevy's 1x1 white placeholder, so an image
+/// shader shows a flat, static frame; a real picture makes it visibly work.
+#[derive(Resource)]
+struct DefaultImage(Handle<Image>);
 
 #[derive(Resource)]
 struct Editor {
@@ -412,8 +420,58 @@ fn main() {
         // Persistent shader storage, the same on native and the web.
         .insert_resource(Pkv(PkvStore::new("nannou-org", "wisp")))
         .add_systems(Startup, setup)
-        .add_systems(Update, editor_ui)
+        .add_systems(Update, (editor_ui, apply_default_image_inputs))
         .run();
+}
+
+/// Point every still-unset `@image` input at the built-in [`DefaultImage`].
+///
+/// Library inputs start image bindings at `Handle::default()` (bevy's 1x1 white
+/// placeholder); swapping those for a real image is what makes an image shader
+/// show a picture. Inputs already set to another image are left untouched.
+fn apply_default_image_inputs(image: Res<DefaultImage>, mut cameras: Query<&mut WispInputs>) {
+    for mut inputs in &mut cameras {
+        let unset = inputs
+            .values()
+            .any(|value| matches!(value, WispValue::Image(handle) if *handle == Handle::default()));
+        // Touch the inputs (and so trigger change detection) only when there is
+        // actually a placeholder to replace.
+        if !unset {
+            continue;
+        }
+        for value in inputs.values_mut() {
+            if let WispValue::Image(handle) = value
+                && *handle == Handle::default()
+            {
+                *handle = image.0.clone();
+            }
+        }
+    }
+}
+
+/// A colourful checkerboard over a gradient, the default `@image` input.
+fn checkerboard(size: u32, cell: u32) -> Image {
+    let mut data = Vec::with_capacity((size * size * 4) as usize);
+    for y in 0..size {
+        for x in 0..size {
+            let on = ((x / cell) + (y / cell)).is_multiple_of(2);
+            let r = if on { 230u8 } else { 30 };
+            let g = (x * 255 / size) as u8;
+            let b = (y * 255 / size) as u8;
+            data.extend_from_slice(&[r, g, b, 255]);
+        }
+    }
+    Image::new(
+        Extent3d {
+            width: size,
+            height: size,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::default(),
+    )
 }
 
 /// The pkv key holding a single user shader's source.
@@ -479,9 +537,11 @@ fn setup(
     asset_server: Res<AssetServer>,
     embedded: Res<EmbeddedAssetRegistry>,
     pkv: Res<Pkv>,
+    mut images: ResMut<Assets<Image>>,
     mut egui_settings: ResMut<bevy_egui::EguiGlobalSettings>,
 ) {
     register_bundled(&embedded);
+    commands.insert_resource(DefaultImage(images.add(checkerboard(512, 32))));
     // The egui UI gets its own full-window camera: bevy_egui sizes a context
     // to its camera's viewport, so hosting the UI on the wisp camera (whose
     // viewport follows the panel) would shrink the UI along with it.
