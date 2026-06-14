@@ -431,6 +431,11 @@ pub fn schema_from_module(reflected: &ReflectedModule) -> Result<WispSchema, Sch
                 else {
                     return Err(SchemaError::UniformNotStruct { name });
                 };
+                // The shader's uniform structs are padded to a 16-byte multiple
+                // before compilation (see `crate::align`) for WebGL2; round the
+                // reported size to match so the buffer and bind group layout
+                // agree with the compiled type. Member offsets are unaffected.
+                let span = span.next_multiple_of(16);
                 match group {
                     0 => {
                         if binding != 0 {
