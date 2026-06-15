@@ -13,7 +13,7 @@ name = "wisp-editor"
 path = "src/main.rs"
 
 [dependencies]
-bevy_wisp = { path = "..", features = ["ui"] }
+bevy_wisp = { path = "..", features = ["ui", "audio"] }
 # Full bevy for windowing/winit/render (native backends).
 bevy = "0.19.0-rc.2"
 # The editor names `bevy_egui::` directly, so depend on it explicitly rather
@@ -22,10 +22,20 @@ bevy_egui = "0.40.0-rc.1"
 # Syntax highlighting, kept in lockstep with the `egui` used by `bevy_egui`.
 egui_extras = { version = "0.34", default-features = false }
 egui_tiles = "0.15"
+# Persistent shader storage, the same on native (a `redb` file in the platform
+# data dir) and the web (browser local storage). `default-features = false`
+# drops bevy_pkv's own `bevy` feature, which would otherwise pull in a second,
+# conflicting `bevy_ecs`; the store is wrapped in a local `Resource` instead.
+bevy_pkv = { version = "0.14", default-features = false, features = ["redb"] }
 
-# Platform data dir for the user shader directory; native only.
+# Microphone capture for `@audio` shaders; native only (cpal's web backends do
+# not implement input yet). Pinned to the version bevy's audio already uses, so
+# no new system libraries and no duplicate cpal.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-dirs = "6"
+cpal = "0.17"
+# Wait-free SPSC ring buffer for handing samples from the cpal callback (audio
+# thread) to the drain system without locking or allocating on the audio thread.
+rtrb = "0.3"
 
 [features]
 # Pick the wasm rendering backend. `webgl2` is the default because it runs in

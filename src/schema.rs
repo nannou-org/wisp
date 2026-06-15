@@ -48,6 +48,20 @@ pub struct WispSchema {
     pub bindings: Vec<BindingDesc>,
 }
 
+/// Whether the shader needs compute-shader support to run.
+///
+/// A compute pass (and the storage-texture target it writes) cannot be built on
+/// a device without `DownlevelFlags::COMPUTE_SHADERS` - notably WebGL2 - so the
+/// render layer skips such a wisp there and surfaces an error rather than
+/// tripping wgpu validation. Storage textures only ever back a compute pass, so
+/// the presence of a compute pass is the complete test.
+pub(crate) fn requires_compute(schema: &WispSchema) -> bool {
+    schema
+        .passes
+        .iter()
+        .any(|pass| matches!(pass.stage, PassStage::Compute))
+}
+
 /// One entry in the shader's bind group interface.
 #[derive(Clone, Debug, Eq, Hash, PartialEq)]
 pub struct BindingDesc {
@@ -417,6 +431,11 @@ pub fn schema_from_module(reflected: &ReflectedModule) -> Result<WispSchema, Sch
                 else {
                     return Err(SchemaError::UniformNotStruct { name });
                 };
+                // The shader's uniform structs are padded to a 16-byte multiple
+                // before compilation (see `crate::align`) for WebGL2; round the
+                // reported size to match so the buffer and bind group layout
+                // agree with the compiled type. Member offsets are unaffected.
+                let span = span.next_multiple_of(16);
                 match group {
                     0 => {
                         if binding != 0 {

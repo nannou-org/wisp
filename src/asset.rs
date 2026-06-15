@@ -62,7 +62,11 @@ impl AssetLoader for WispLoader {
         let reflected = reflect::parse_and_validate(source)?;
         let schema = schema::schema_from_module(&reflected)?;
         let path = load_context.path().to_string();
-        let shader = Shader::from_wgsl(source.to_string(), path);
+        // Pad the uniform structs to a 16-byte multiple so their types are
+        // accepted on devices without `BUFFER_BINDINGS_NOT_16_BYTE_ALIGNED`
+        // (e.g. WebGL2); the schema rounds its sizes to match.
+        let padded = crate::align::pad_uniform_structs(source, &reflected.module);
+        let shader = Shader::from_wgsl(padded, path);
         let shader = load_context.add_labeled_asset(String::from("shader"), shader);
         Ok(Wisp { schema, shader })
     }

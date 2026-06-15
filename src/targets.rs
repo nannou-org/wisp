@@ -7,12 +7,14 @@
 //! writing the next.
 
 use crate::asset::{Wisp, WispHandle};
-use crate::schema::{PassSchema, PassStage, TargetSchema, WispSchema, eval_size};
+use crate::render::supports_compute;
+use crate::schema::{PassSchema, PassStage, TargetSchema, WispSchema, eval_size, requires_compute};
 use bevy::camera::RenderTarget;
 use bevy::log::warn_once;
 use bevy::prelude::*;
 use bevy::render::extract_component::ExtractComponent;
 use bevy::render::render_resource::{Extent3d, TextureUsages};
+use bevy::render::renderer::RenderAdapter;
 use bevy::window::{PrimaryWindow, WindowRef};
 
 /// The intermediate target images for a wisp camera, parallel to the schema's
@@ -49,6 +51,9 @@ impl PassTarget {
 /// Keep every wisp camera's pass targets in sync with its schema and view size.
 pub(crate) fn update_pass_targets(
     mut commands: Commands,
+    // Absent when there is no render backend (e.g. headless); then there is no
+    // GPU to allocate against, so the compute-support gate below is skipped.
+    render_adapter: Option<Res<RenderAdapter>>,
     wisps: Res<Assets<Wisp>>,
     windows: Query<(&Window, Option<&PrimaryWindow>)>,
     mut images: ResMut<Assets<Image>>,
@@ -64,6 +69,16 @@ pub(crate) fn update_pass_targets(
         let Some(wisp) = wisps.get(&**wisp) else {
             continue;
         };
+        // A compute wisp needs a storage-texture target, which the device
+        // cannot allocate without compute support (e.g. WebGL2). Skip it - the
+        // render layer skips the wisp too and surfaces the reason on screen.
+        if requires_compute(&wisp.schema)
+            && render_adapter
+                .as_ref()
+                .is_some_and(|adapter| !supports_compute(adapter))
+        {
+            continue;
+        }
         // A camera viewport (e.g. when sharing the window with UI panels)
         // bounds the view; targets and `$WIDTH`/`$HEIGHT` follow it.
         let viewport_size = camera.viewport.as_ref().map(|v| v.physical_size);

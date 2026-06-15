@@ -53,6 +53,7 @@ use bevy::platform::collections::HashSet;
 use bevy::prelude::*;
 use bevy::window::{PresentMode, PrimaryWindow, WindowRef};
 
+mod align;
 pub mod annot;
 pub mod asset;
 #[cfg(feature = "audio")]

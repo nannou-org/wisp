@@ -1,9 +1,10 @@
 //! Auto-generated egui control panel (feature `ui`).
 //!
-//! A reflection-driven panel for every wisp camera's inputs: sliders for ranged
-//! floats, checkboxes for `@bool`, dropdowns for `@values`, colour pickers for
-//! `@color` and drag rows for vectors. [`WispErrors`] are shown in a collapsible
-//! section so live-coding failures are visible on screen.
+//! A reflection-driven panel for every wisp camera's inputs, laid out as a
+//! two-column table - the param's label on the left, its widget on the right:
+//! sliders for ranged floats, checkboxes for `@bool`, dropdowns for `@values`,
+//! colour pickers for `@color` and drag rows for vectors. [`WispErrors`] are
+//! shown in a collapsible section so live-coding failures are visible on screen.
 //!
 //! By default the widgets live in a floating window; disable that via
 //! [`WispConfig::ui_window`](crate::WispConfig::ui_window) and embed them in
@@ -56,14 +57,25 @@ pub(crate) fn wisp_ui(
 }
 
 /// A widget for every param in the schema, mutating the matching `inputs`.
+///
+/// Laid out as a two-column table: each param's label sits in the left column
+/// and its widget in the right, so the controls line up no matter how long the
+/// labels are.
 pub fn params_ui(ui: &mut egui::Ui, schema: &WispSchema, inputs: &mut WispInputs) {
-    if let Some(params) = &schema.params {
-        for field in &params.fields {
-            if let Some(value) = inputs.get_mut(&field.name) {
-                field_row(ui, field, value);
+    let Some(params) = &schema.params else {
+        return;
+    };
+    egui::Grid::new("wisp_params")
+        .num_columns(2)
+        .striped(true)
+        .show(ui, |ui| {
+            for field in &params.fields {
+                if let Some(value) = inputs.get_mut(&field.name) {
+                    field_row(ui, field, value);
+                    ui.end_row();
+                }
             }
-        }
-    }
+        });
 }
 
 /// A red collapsible section listing the current load/pipeline errors, if any.
@@ -85,97 +97,84 @@ pub fn errors_ui(ui: &mut egui::Ui, errors: &WispErrors) {
         });
 }
 
+/// One table row: the param's label in the left column, its widget in the
+/// right. The caller ends the row.
 fn field_row(ui: &mut egui::Ui, field: &ParamField, value: &mut WispValue) {
     let label = field.ui.label.as_deref().unwrap_or(&field.name);
     let hints = &field.ui;
+    let label_response = ui.label(label);
     let response = match value {
-        WispValue::F32(v) => float_row(ui, label, hints, v),
-        WispValue::Bool(v) => ui.checkbox(v, label),
-        WispValue::I32(v) => int_row(ui, label, hints, v),
-        WispValue::U32(v) => int_row(ui, label, hints, v),
+        WispValue::F32(v) => float_widget(ui, hints, v),
+        WispValue::Bool(v) => ui.checkbox(v, ""),
+        WispValue::I32(v) => int_widget(ui, &field.name, hints, v),
+        WispValue::U32(v) => int_widget(ui, &field.name, hints, v),
         WispValue::Vec2(v) => {
             let mut components = v.to_array();
-            let response = drag_row(ui, label, hints, &mut components);
+            let response = drag_widget(ui, hints, &mut components);
             *v = Vec2::from_array(components);
             response
         }
         WispValue::Vec3(v) if hints.color => {
             let mut rgb = v.to_array();
-            let response = ui
-                .horizontal(|ui| {
-                    ui.color_edit_button_rgb(&mut rgb);
-                    ui.label(label);
-                })
-                .response;
+            let response = ui.color_edit_button_rgb(&mut rgb);
             *v = Vec3::from_array(rgb);
             response
         }
         WispValue::Vec3(v) => {
             let mut components = v.to_array();
-            let response = drag_row(ui, label, hints, &mut components);
+            let response = drag_widget(ui, hints, &mut components);
             *v = Vec3::from_array(components);
             response
         }
         WispValue::Vec4(v) if hints.color => {
             let mut rgba = v.to_array();
-            let response = ui
-                .horizontal(|ui| {
-                    ui.color_edit_button_rgba_unmultiplied(&mut rgba);
-                    ui.label(label);
-                })
-                .response;
+            let response = ui.color_edit_button_rgba_unmultiplied(&mut rgba);
             *v = Vec4::from_array(rgba);
             response
         }
         WispValue::Vec4(v) => {
             let mut components = v.to_array();
-            let response = drag_row(ui, label, hints, &mut components);
+            let response = drag_widget(ui, hints, &mut components);
             *v = Vec4::from_array(components);
             response
         }
-        WispValue::Image(_) => ui.label(format!("{label} (image input)")),
+        WispValue::Image(_) => ui.weak("(image input)"),
     };
+    // The description, where present, is the hover text for both the label and
+    // the widget, so it surfaces wherever the pointer lands on the row.
     if !hints.description.is_empty() {
+        label_response.on_hover_text(&hints.description);
         response.on_hover_text(&hints.description);
     }
 }
 
-fn float_row(ui: &mut egui::Ui, label: &str, hints: &UiHints, value: &mut f32) -> egui::Response {
+fn float_widget(ui: &mut egui::Ui, hints: &UiHints, value: &mut f32) -> egui::Response {
     if let (Some(min), Some(max)) = (hints.min, hints.max) {
-        let mut slider = egui::Slider::new(value, min as f32..=max as f32).text(label);
+        let mut slider = egui::Slider::new(value, min as f32..=max as f32);
         if let Some(step) = hints.step {
             slider = slider.step_by(step);
         }
         return ui.add(slider);
     }
-    ui.horizontal(|ui| {
-        let mut drag = egui::DragValue::new(value).speed(hints.step.unwrap_or(0.01));
-        if let (Some(min), Some(max)) = (hints.min, hints.max) {
-            drag = drag.range(min..=max);
-        }
-        ui.add(drag);
-        ui.label(label);
-    })
-    .response
+    let mut drag = egui::DragValue::new(value).speed(hints.step.unwrap_or(0.01));
+    if let (Some(min), Some(max)) = (hints.min, hints.max) {
+        drag = drag.range(min..=max);
+    }
+    ui.add(drag)
 }
 
-fn int_row<T: egui::emath::Numeric>(
+fn int_widget<T: egui::emath::Numeric>(
     ui: &mut egui::Ui,
-    label: &str,
+    id_salt: &str,
     hints: &UiHints,
     value: &mut T,
 ) -> egui::Response {
     if hints.values.is_empty() {
-        return ui
-            .horizontal(|ui| {
-                let mut drag = egui::DragValue::new(value).speed(hints.step.unwrap_or(1.0));
-                if let (Some(min), Some(max)) = (hints.min, hints.max) {
-                    drag = drag.range(min..=max);
-                }
-                ui.add(drag);
-                ui.label(label);
-            })
-            .response;
+        let mut drag = egui::DragValue::new(value).speed(hints.step.unwrap_or(1.0));
+        if let (Some(min), Some(max)) = (hints.min, hints.max) {
+            drag = drag.range(min..=max);
+        }
+        return ui.add(drag);
     }
     let display = |index: usize, value: i64| {
         hints
@@ -191,7 +190,7 @@ fn int_row<T: egui::emath::Numeric>(
         .position(|v| *v == current)
         .map(|index| display(index, current))
         .unwrap_or_else(|| current.to_string());
-    egui::ComboBox::from_label(label)
+    egui::ComboBox::from_id_salt(id_salt)
         .selected_text(selected_text)
         .show_ui(ui, |ui| {
             for (index, v) in hints.values.iter().enumerate() {
@@ -201,17 +200,11 @@ fn int_row<T: egui::emath::Numeric>(
         .response
 }
 
-fn drag_row(
-    ui: &mut egui::Ui,
-    label: &str,
-    hints: &UiHints,
-    components: &mut [f32],
-) -> egui::Response {
+fn drag_widget(ui: &mut egui::Ui, hints: &UiHints, components: &mut [f32]) -> egui::Response {
     ui.horizontal(|ui| {
         for component in components.iter_mut() {
             ui.add(egui::DragValue::new(component).speed(hints.step.unwrap_or(0.01)));
         }
-        ui.label(label);
     })
     .response
 }
