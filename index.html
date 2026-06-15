@@ -80,7 +80,7 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 import init, * as bindings from './wisp-editor.js';
 import initializer from './initializer.js';
 
-const wasm = await __trunkInitializer(init, './wisp-editor_bg.wasm', 32589535, initializer(), true);
+const wasm = await __trunkInitializer(init, './wisp-editor_bg.wasm', 32817603, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -132,7 +132,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
             transition: width 0.2s ease;
         }
     </style>
-<link rel="modulepreload" href="./wisp-editor.js" crossorigin="anonymous" integrity="sha384-naWyAm1weEXVY9Ii27yO1iEwpzXwFUinPRAqDR/n6gIsV5UBrSfIio26N113sqtB"><link rel="modulepreload" href="./initializer.js" crossorigin="anonymous" integrity="sha384-AUQ/wcWeusvS1MGxTIiNOqRU1Atxh7QAhWlkwAzCSVIen5YlhA7h6DtjwhGXAWUo"><link rel="preload" href="./wisp-editor_bg.wasm" crossorigin="anonymous" integrity="sha384-j9wR7cJwVwUX8xbbT0bqVQYgyxnT6LMYKWRufXd+cnDkYjqfIthyiUkhBmFdQMyH" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./wisp-editor.js" crossorigin="anonymous" integrity="sha384-QkkHOwhYHmi7L6PUrJo3RoXNn2udgI6rJ04yFoiXBizVhzZfl5ewXyB5RY1CD7oA"><link rel="modulepreload" href="./initializer.js" crossorigin="anonymous" integrity="sha384-AUQ/wcWeusvS1MGxTIiNOqRU1Atxh7QAhWlkwAzCSVIen5YlhA7h6DtjwhGXAWUo"><link rel="preload" href="./wisp-editor_bg.wasm" crossorigin="anonymous" integrity="sha384-oMhqi/sUcK+Ar+lL7/2HuvzWCIWD0w7bvlufDnlN2TVkhKfcpsMzSTlBfRygbb9Q" as="fetch" type="application/wasm"></head>
 <body>
     <div id="loading">
         <p id="loading-title">w i s p</p>
