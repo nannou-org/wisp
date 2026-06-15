@@ -21,7 +21,7 @@ use bevy_wisp::schema::TextureRole;
 #[cfg(not(target_arch = "wasm32"))]
 use {
     bevy_wisp::prelude::WispAudio,
-    std::sync::{Arc, Mutex},
+    rtrb::{Consumer, Producer, RingBuffer},
 };
 
 /// The default capture gain: low, so a hot mic does not blow out the visuals.
@@ -33,8 +33,7 @@ impl Plugin for AudioPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<AudioConfig>();
         #[cfg(not(target_arch = "wasm32"))]
-        app.init_resource::<AudioShared>()
-            .insert_non_send(AudioStream::default())
+        app.insert_non_send(AudioStream::default())
             .add_systems(Startup, enumerate_devices)
             .add_systems(Update, (manage_capture, drain_capture));
     }
@@ -118,25 +117,30 @@ pub(crate) fn audio_ui(ui: &mut egui::Ui, config: &mut AudioConfig) {
 // Native capture (cpal)
 // ---------------------------------------------------------------------------
 
-/// Captured samples shared between the cpal callback (audio thread) and the
-/// drain system (main thread).
+/// Capacity of the capture ring, in interleaved samples. The drain empties it
+/// every frame, so it normally holds about one frame; the headroom (~0.34s at
+/// 48kHz stereo) only matters during a multi-frame stall, when the oldest
+/// surplus is dropped.
 #[cfg(not(target_arch = "wasm32"))]
-#[derive(Resource, Default)]
-struct AudioShared {
-    /// Interleaved samples pushed by the callback, drained each frame.
-    buffer: Arc<Mutex<Vec<f32>>>,
-    /// The live stream's channel count, set when the stream is (re)built.
-    channels: usize,
-}
+const RING_CAP: usize = 1 << 15;
 
-/// The live cpal input stream. `cpal::Stream` is `!Send`, so it lives in a
-/// non-send resource and is managed only from the main thread.
+/// The live cpal input stream and its capture ring's consuming end.
+///
+/// `cpal::Stream` is `!Send` and the ring [`Consumer`] is `Send` but `!Sync`, so
+/// both live in this non-send resource, managed only from the main thread. The
+/// stream's callback owns the matching wait-free [`Producer`].
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Default)]
 struct AudioStream {
     stream: Option<cpal::Stream>,
+    /// The consuming end of the capture ring, drained each frame.
+    consumer: Option<Consumer<f32>>,
+    /// The live stream's channel count, set when the stream is (re)built.
+    channels: usize,
     /// The device name the live stream captures from, or `None` when stopped.
     active: Option<String>,
+    /// Reused by the drain to concatenate the ring's two wraparound slices.
+    scratch: Vec<f32>,
 }
 
 /// A device's display name, via cpal's structured device description.
@@ -165,11 +169,7 @@ fn enumerate_devices(mut config: ResMut<AudioConfig>) {
 
 /// Start, stop or switch the capture stream to match the config.
 #[cfg(not(target_arch = "wasm32"))]
-fn manage_capture(
-    mut config: ResMut<AudioConfig>,
-    mut shared: ResMut<AudioShared>,
-    mut stream: NonSendMut<AudioStream>,
-) {
+fn manage_capture(mut config: ResMut<AudioConfig>, mut stream: NonSendMut<AudioStream>) {
     // When enabled, capture from the selected device, falling back to the
     // host default (an empty name) when none is listed. `None` means stopped.
     let want = config
@@ -178,17 +178,19 @@ fn manage_capture(
     if want == stream.active {
         return;
     }
-    // Dropping the old stream stops capture; clear stale samples before the new
-    // (possibly different-channel) stream starts filling the buffer.
+    // Dropping the old stream drops its producer and stops capture; a fresh ring
+    // is built below, so the stale consumer is simply discarded (no clearing).
     stream.stream = None;
+    stream.consumer = None;
     stream.active = None;
-    shared.buffer.lock().unwrap().clear();
     let Some(name) = want else {
         return;
     };
-    match build_stream(&name, &mut shared) {
-        Ok(built) => {
+    match build_stream(&name) {
+        Ok((built, consumer, channels)) => {
             stream.stream = Some(built);
+            stream.consumer = Some(consumer);
+            stream.channels = channels;
             stream.active = Some(name);
             config.status = None;
         }
@@ -201,9 +203,10 @@ fn manage_capture(
     }
 }
 
-/// Build and start a cpal input stream feeding the shared buffer.
+/// Build and start a cpal input stream feeding a fresh capture ring, returning
+/// the stream, the ring's consuming end, and the stream's channel count.
 #[cfg(not(target_arch = "wasm32"))]
-fn build_stream(name: &str, shared: &mut AudioShared) -> Result<cpal::Stream, String> {
+fn build_stream(name: &str) -> Result<(cpal::Stream, Consumer<f32>, usize), String> {
     use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
     let host = cpal::default_host();
     let device = host
@@ -213,28 +216,30 @@ fn build_stream(name: &str, shared: &mut AudioShared) -> Result<cpal::Stream, St
         .or_else(|| host.default_input_device())
         .ok_or_else(|| String::from("no audio input device"))?;
     let supported = device.default_input_config().map_err(|e| e.to_string())?;
-    shared.channels = supported.channels() as usize;
+    let channels = supported.channels() as usize;
     let sample_format = supported.sample_format();
     let config: cpal::StreamConfig = supported.into();
-    let buffer = shared.buffer.clone();
+    let (producer, consumer) = RingBuffer::<f32>::new(RING_CAP);
     let err_fn = |err| error!("wisp editor: audio capture error: {err}");
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => input_stream::<f32>(&device, &config, buffer, err_fn),
-        cpal::SampleFormat::I16 => input_stream::<i16>(&device, &config, buffer, err_fn),
-        cpal::SampleFormat::U16 => input_stream::<u16>(&device, &config, buffer, err_fn),
+        cpal::SampleFormat::F32 => input_stream::<f32>(&device, &config, producer, channels, err_fn),
+        cpal::SampleFormat::I16 => input_stream::<i16>(&device, &config, producer, channels, err_fn),
+        cpal::SampleFormat::U16 => input_stream::<u16>(&device, &config, producer, channels, err_fn),
         fmt => Err(format!("unsupported sample format {fmt:?}")),
     }?;
     stream.play().map_err(|e| e.to_string())?;
-    Ok(stream)
+    Ok((stream, consumer, channels))
 }
 
-/// Build a typed input stream that converts samples to `f32` and appends them
-/// to the shared buffer.
+/// Build a typed input stream whose callback converts samples to `f32` and
+/// writes them into the ring's producing end - wait-free and allocation-free, so
+/// the audio thread never blocks.
 #[cfg(not(target_arch = "wasm32"))]
 fn input_stream<T>(
     device: &cpal::Device,
     config: &cpal::StreamConfig,
-    buffer: Arc<Mutex<Vec<f32>>>,
+    mut producer: Producer<f32>,
+    channels: usize,
     err_fn: impl FnMut(cpal::StreamError) + Send + 'static,
 ) -> Result<cpal::Stream, String>
 where
@@ -243,18 +248,24 @@ where
 {
     use cpal::Sample;
     use cpal::traits::DeviceTrait;
+    let channels = channels.max(1);
     device
         .build_input_stream(
             config,
             move |data: &[T], _: &cpal::InputCallbackInfo| {
-                let mut buf = buffer.lock().unwrap();
-                buf.extend(data.iter().map(|&sample| f32::from_sample(sample)));
-                // Bound the backlog so a stalled drain (e.g. a slow frame) can
-                // never grow it without limit.
-                const MAX: usize = 1 << 16;
-                if buf.len() > MAX {
-                    let excess = buf.len() - MAX;
-                    buf.drain(..excess);
+                // Write only whole frames that fit; the tail is dropped (the
+                // ring is bounded). Flooring to whole frames keeps the consumer's
+                // channel parity from desyncing if the ring ever fills.
+                let n = (data.len().min(producer.slots()) / channels) * channels;
+                if n == 0 {
+                    return;
+                }
+                if let Ok(mut chunk) = producer.write_chunk(n) {
+                    let (first, second) = chunk.as_mut_slices();
+                    for (dst, &src) in first.iter_mut().chain(second.iter_mut()).zip(data) {
+                        *dst = f32::from_sample(src);
+                    }
+                    chunk.commit_all();
                 }
             },
             err_fn,
@@ -263,22 +274,43 @@ where
         .map_err(|e| e.to_string())
 }
 
-/// Drain the captured samples into [`WispAudio`], applying the config gain.
+/// Drain the captured samples from the ring into [`WispAudio`], applying the
+/// config gain. Runs on the main thread (it holds the non-send consumer).
 #[cfg(not(target_arch = "wasm32"))]
-fn drain_capture(config: Res<AudioConfig>, shared: Res<AudioShared>, mut audio: ResMut<WispAudio>) {
+fn drain_capture(
+    config: Res<AudioConfig>,
+    mut stream: NonSendMut<AudioStream>,
+    mut audio: ResMut<WispAudio>,
+) {
     if !config.enabled {
         return;
     }
-    let mut samples = {
-        let mut buf = shared.buffer.lock().unwrap();
-        if buf.is_empty() {
-            return;
-        }
-        std::mem::take(&mut *buf)
+    // Disjoint field borrows: the consumer and the scratch buffer at once.
+    let AudioStream {
+        consumer,
+        scratch,
+        channels,
+        ..
+    } = &mut *stream;
+    let Some(consumer) = consumer.as_mut() else {
+        return;
     };
+    let available = consumer.slots();
+    if available == 0 {
+        return;
+    }
+    // Concatenate the ring's two wraparound slices so the interleaved frames
+    // stay aligned across the boundary before they reach `push_frames`.
+    scratch.clear();
+    if let Ok(chunk) = consumer.read_chunk(available) {
+        let (first, second) = chunk.as_slices();
+        scratch.extend_from_slice(first);
+        scratch.extend_from_slice(second);
+        chunk.commit_all();
+    }
     let gain = config.gain;
-    for sample in &mut samples {
+    for sample in scratch.iter_mut() {
         *sample *= gain;
     }
-    audio.push_frames(&samples, shared.channels.max(1));
+    audio.push_frames(scratch.as_slice(), (*channels).max(1));
 }
