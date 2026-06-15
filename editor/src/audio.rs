@@ -104,7 +104,10 @@ pub(crate) fn audio_ui(ui: &mut egui::Ui, config: &mut AudioConfig) {
     }
     #[cfg(target_arch = "wasm32")]
     {
-        ui.add_enabled(false, egui::Checkbox::new(&mut config.enabled, "capture microphone"));
+        ui.add_enabled(
+            false,
+            egui::Checkbox::new(&mut config.enabled, "capture microphone"),
+        );
         ui.weak("microphone capture is coming soon on the web build");
     }
     ui.add(egui::Slider::new(&mut config.gain, 0.0..=4.0).text("gain"));
@@ -172,9 +175,13 @@ fn enumerate_devices(mut config: ResMut<AudioConfig>) {
 fn manage_capture(mut config: ResMut<AudioConfig>, mut stream: NonSendMut<AudioStream>) {
     // When enabled, capture from the selected device, falling back to the
     // host default (an empty name) when none is listed. `None` means stopped.
-    let want = config
-        .enabled
-        .then(|| config.devices.get(config.selected).cloned().unwrap_or_default());
+    let want = config.enabled.then(|| {
+        config
+            .devices
+            .get(config.selected)
+            .cloned()
+            .unwrap_or_default()
+    });
     if want == stream.active {
         return;
     }
@@ -222,9 +229,15 @@ fn build_stream(name: &str) -> Result<(cpal::Stream, Consumer<f32>, usize), Stri
     let (producer, consumer) = RingBuffer::<f32>::new(RING_CAP);
     let err_fn = |err| error!("wisp editor: audio capture error: {err}");
     let stream = match sample_format {
-        cpal::SampleFormat::F32 => input_stream::<f32>(&device, &config, producer, channels, err_fn),
-        cpal::SampleFormat::I16 => input_stream::<i16>(&device, &config, producer, channels, err_fn),
-        cpal::SampleFormat::U16 => input_stream::<u16>(&device, &config, producer, channels, err_fn),
+        cpal::SampleFormat::F32 => {
+            input_stream::<f32>(&device, &config, producer, channels, err_fn)
+        }
+        cpal::SampleFormat::I16 => {
+            input_stream::<i16>(&device, &config, producer, channels, err_fn)
+        }
+        cpal::SampleFormat::U16 => {
+            input_stream::<u16>(&device, &config, producer, channels, err_fn)
+        }
         fmt => Err(format!("unsupported sample format {fmt:?}")),
     }?;
     stream.play().map_err(|e| e.to_string())?;

@@ -494,7 +494,9 @@ fn shader_source_key(name: &str) -> String {
 
 /// The names of all user-saved shaders, in save order (empty if none yet).
 fn stored_shader_names(pkv: &Pkv) -> Vec<String> {
-    pkv.0.get::<Vec<String>>(SHADER_INDEX_KEY).unwrap_or_default()
+    pkv.0
+        .get::<Vec<String>>(SHADER_INDEX_KEY)
+        .unwrap_or_default()
 }
 
 /// A user shader's stored source, if present.
