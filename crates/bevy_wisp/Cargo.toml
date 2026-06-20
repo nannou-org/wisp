@@ -1,0 +1,53 @@
+[package]
+name = "bevy_wisp"
+version = "0.1.0"
+description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
+readme = "README.md"
+keywords = ["bevy", "wgsl", "shader", "live-coding", "creative-coding"]
+categories = ["game-development", "graphics", "rendering"]
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Declared directly (not `workspace = true`) because the library builds bevy with
+# `default-features = false`, which an inherited workspace dependency cannot
+# override. Step towards depending on the individual subcrates directly.
+bevy = { version = "0.19.0-rc.2", default-features = false, features = [
+    "bevy_asset",
+    "bevy_core_pipeline",
+    "bevy_log",
+    "bevy_render",
+    "bevy_window",
+] }
+bevy_egui = { workspace = true, optional = true }
+bytemuck = "1"
+evalexpr = "12"
+half = { version = "2", optional = true }
+# Kept in lockstep with the `naga` used by `bevy_shader`, so that wisp's
+# reflection accepts exactly the WGSL that bevy compiles.
+naga = { version = "29", default-features = false, features = ["wgsl-in"] }
+rustfft = { version = "6", optional = true }
+thiserror = "2"
+
+[dev-dependencies]
+# The examples want windowing, winit and friends.
+bevy = { workspace = true }
+
+[features]
+# Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
+# `WispAudio` resource.
+audio = ["dep:half", "dep:rustfft"]
+# Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
+# `EguiPlugin` to be added to the app.
+ui = ["dep:bevy_egui"]
+
+[[example]]
+name = "audio"
+required-features = ["audio"]
+
+[[example]]
+name = "ui"
+required-features = ["ui"]

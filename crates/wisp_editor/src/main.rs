@@ -61,39 +61,39 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 const BUNDLED: &[(&str, &str)] = &[
     (
         "test_audio",
-        include_str!("../../assets/wisp/test_audio.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_audio.wgsl"),
     ),
     (
         "test_audio_fft",
-        include_str!("../../assets/wisp/test_audio_fft.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_audio_fft.wgsl"),
     ),
     (
         "test_color",
-        include_str!("../../assets/wisp/test_color.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_color.wgsl"),
     ),
     (
         "test_compute",
-        include_str!("../../assets/wisp/test_compute.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_compute.wgsl"),
     ),
     (
         "test_float",
-        include_str!("../../assets/wisp/test_float.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_float.wgsl"),
     ),
     (
         "test_image",
-        include_str!("../../assets/wisp/test_image.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_image.wgsl"),
     ),
     (
         "test_inputs",
-        include_str!("../../assets/wisp/test_inputs.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_inputs.wgsl"),
     ),
     (
         "test_multi_pass_rendering",
-        include_str!("../../assets/wisp/test_multi_pass_rendering.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_multi_pass_rendering.wgsl"),
     ),
     (
         "test_persistent_buffer",
-        include_str!("../../assets/wisp/test_persistent_buffer.wgsl"),
+        include_str!("../../bevy_wisp/assets/wisp/test_persistent_buffer.wgsl"),
     ),
 ];
 

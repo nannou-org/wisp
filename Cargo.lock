@@ -6671,7 +6671,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "wisp-editor"
+name = "wisp_editor"
 version = "0.1.0"
 dependencies = [
  "bevy",

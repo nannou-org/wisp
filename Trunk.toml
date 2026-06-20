@@ -1,5 +1,5 @@
 [build]
-target = "editor/web/index.html"
+target = "crates/wisp_editor/web/index.html"
 public_url = "./"
 filehash = false
 

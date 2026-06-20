@@ -1,61 +1,22 @@
-[package]
-name = "bevy_wisp"
-version = "0.1.0"
-description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
+[workspace]
+resolver = "3"
+members = ["crates/bevy_wisp", "crates/wisp_editor"]
+
+[workspace.package]
+edition = "2024"
 authors = ["mitchmindtree <mitchell.nordine@gmail.com>"]
 repository = "https://github.com/nannou-org/wisp"
 homepage = "https://github.com/nannou-org/wisp"
-readme = "README.md"
-keywords = ["bevy", "wgsl", "shader", "live-coding", "creative-coding"]
-categories = ["game-development", "graphics", "rendering"]
 license = "MIT OR Apache-2.0"
-edition = "2024"
 
-[workspace]
-members = ["editor"]
-
-[dependencies]
+[workspace.dependencies]
 # Pinned to the Bevy 0.19 release candidates while awaiting the stable release;
 # the first crates.io release follows Bevy 0.19 stable.
-bevy = { version = "0.19.0-rc.2", default-features = false, features = [
-    "bevy_asset",
-    "bevy_core_pipeline",
-    "bevy_log",
-    "bevy_render",
-    "bevy_window",
-] }
-bevy_egui = { version = "0.40.0-rc.1", optional = true }
-bytemuck = "1"
-evalexpr = "12"
-half = { version = "2", optional = true }
-# Kept in lockstep with the `naga` used by `bevy_shader`, so that wisp's
-# reflection accepts exactly the WGSL that bevy compiles.
-naga = { version = "29", default-features = false, features = ["wgsl-in"] }
-rustfft = { version = "6", optional = true }
-thiserror = "2"
+bevy = "0.19.0-rc.2"
+bevy_egui = "0.40.0-rc.1"
 
-[dev-dependencies]
-# The examples want windowing, winit and friends.
-bevy = { version = "0.19.0-rc.2" }
-
-[features]
-# Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
-# `WispAudio` resource.
-audio = ["dep:half", "dep:rustfft"]
-# Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
-# `EguiPlugin` to be added to the app.
-ui = ["dep:bevy_egui"]
-
-[[example]]
-name = "audio"
-required-features = ["audio"]
-
-[[example]]
-name = "ui"
-required-features = ["ui"]
-
-# Size-optimised profile for the wasm build of the editor (see `editor/`).
-# Profiles must live in the workspace root manifest.
+# Size-optimised profile for the wasm build of the editor (see
+# `crates/wisp_editor`). Profiles must live in the workspace root manifest.
 [profile.wasm_release]
 inherits = "release"
 opt-level = 'z'      # optimise for size
