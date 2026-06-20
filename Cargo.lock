@@ -1308,9 +1308,9 @@ dependencies = [
 
 [[package]]
 name = "bevy_pkv"
-version = "0.14.0"
+version = "0.16.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "356a9c6fdc13faf7897103b43a8b84aafe24e1bbf1599df1fb00dc4e9b7055db"
+checksum = "09dc6bd33eaed770b9855effd718fbe626814d2e930c1013c423d76c73e5a9d4"
 dependencies = [
  "cfg_aliases",
  "directories",
@@ -2741,9 +2741,9 @@ dependencies = [
 
 [[package]]
 name = "evalexpr"
-version = "12.0.3"
+version = "13.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae893d2d5e908b78f151ed89de3bfc272cdf6d368c7ed866942f98e24dea208a"
+checksum = "25929004897f2bbab309121a60400d36992f6d911d09baa6c172f6cc55706601"
 
 [[package]]
 name = "event-listener"

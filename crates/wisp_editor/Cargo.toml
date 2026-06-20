@@ -29,7 +29,7 @@ egui_tiles = "0.15"
 # data dir) and the web (browser local storage). `default-features = false`
 # drops bevy_pkv's own `bevy` feature, which would otherwise pull in a second,
 # conflicting `bevy_ecs`; the store is wrapped in a local `Resource` instead.
-bevy_pkv = { version = "0.14", default-features = false, features = ["redb"] }
+bevy_pkv = { version = "0.16", default-features = false, features = ["redb"] }
 
 # Microphone capture for `@audio` shaders; native only (cpal's web backends do
 # not implement input yet). Pinned to the version bevy's audio already uses, so

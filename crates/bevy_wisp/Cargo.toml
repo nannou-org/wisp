@@ -35,7 +35,7 @@ bevy_utils = { workspace = true }
 bevy_window = { workspace = true }
 bevy_egui = { workspace = true, optional = true }
 bytemuck = "1"
-evalexpr = "12"
+evalexpr = "13"
 half = { version = "2", optional = true }
 # Kept in lockstep with the `naga` used by `bevy_shader`, so that wisp's
 # reflection accepts exactly the WGSL that bevy compiles.
