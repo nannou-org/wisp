@@ -10,10 +10,8 @@ homepage = "https://github.com/nannou-org/wisp"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
-# Pinned to the Bevy 0.19 release candidates while awaiting the stable release;
-# the first crates.io release follows Bevy 0.19 stable.
-bevy = "0.19.0-rc.2"
-bevy_egui = "0.40.0-rc.1"
+bevy = "0.19"
+bevy_egui = "0.40"
 
 # Size-optimised profile for the wasm build of the editor (see
 # `crates/wisp_editor`). Profiles must live in the workspace root manifest.
