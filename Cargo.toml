@@ -10,7 +10,26 @@ homepage = "https://github.com/nannou-org/wisp"
 license = "MIT OR Apache-2.0"
 
 [workspace.dependencies]
+# The full umbrella crate, for the editor (windowing/winit/render) and the
+# library's examples; the library itself depends on the individual subcrates.
 bevy = "0.19"
+bevy_app = "0.19"
+bevy_asset = "0.19"
+bevy_camera = "0.19"
+bevy_core_pipeline = "0.19"
+bevy_derive = "0.19"
+bevy_ecs = "0.19"
+bevy_image = "0.19"
+bevy_input = "0.19"
+bevy_log = "0.19"
+bevy_math = "0.19"
+bevy_platform = "0.19"
+bevy_reflect = "0.19"
+bevy_render = "0.19"
+bevy_shader = "0.19"
+bevy_time = "0.19"
+bevy_utils = "0.19"
+bevy_window = "0.19"
 bevy_egui = "0.40"
 
 # Size-optimised profile for the wasm build of the editor (see

@@ -7,10 +7,12 @@
 //! shader uses is fine.
 
 use crate::schema::ParamType;
-use bevy::math::{Vec2, Vec4};
-use bevy::prelude::*;
-use bevy::render::extract_resource::ExtractResource;
-use bevy::window::PrimaryWindow;
+use bevy_ecs::prelude::*;
+use bevy_input::prelude::{ButtonInput, MouseButton};
+use bevy_math::{Vec2, Vec4};
+use bevy_render::extract_resource::ExtractResource;
+use bevy_time::prelude::Time;
+use bevy_window::{PrimaryWindow, Window};
 
 /// A recognized member of the wisp globals uniform struct.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]

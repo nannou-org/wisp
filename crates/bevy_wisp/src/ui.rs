@@ -18,9 +18,11 @@ use crate::asset::{Wisp, WispHandle};
 use crate::error::WispErrors;
 use crate::inputs::{WispInputs, WispValue};
 use crate::schema::{ParamField, UiHints, WispSchema};
-use bevy::prelude::*;
+use bevy_asset::prelude::{AssetServer, Assets};
+use bevy_ecs::prelude::*;
 use bevy_egui::EguiContexts;
 use bevy_egui::egui;
+use bevy_math::{Vec2, Vec3, Vec4};
 
 pub(crate) fn wisp_ui(
     config: Res<WispConfig>,

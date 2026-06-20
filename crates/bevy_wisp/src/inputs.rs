@@ -7,9 +7,12 @@
 //! reload, values are re-matched by name and type so tweaks survive shader edits.
 
 use crate::schema::{ParamField, ParamType, ParamsSchema, TextureRole, WispSchema};
-use bevy::math::{Vec2, Vec3, Vec4};
-use bevy::prelude::*;
-use bevy::render::extract_component::ExtractComponent;
+use bevy_asset::prelude::Handle;
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::prelude::*;
+use bevy_image::prelude::Image;
+use bevy_math::{Vec2, Vec3, Vec4};
+use bevy_render::extract_component::ExtractComponent;
 use std::collections::BTreeMap;
 
 /// The current input values for a wisp shader, keyed by name.

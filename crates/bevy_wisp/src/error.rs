@@ -9,8 +9,10 @@
 //! render world each frame.
 
 use crate::asset::Wisp;
-use bevy::asset::AssetLoadFailedEvent;
-use bevy::prelude::*;
+use bevy_asset::AssetLoadFailedEvent;
+use bevy_asset::prelude::{AssetEvent, AssetServer};
+use bevy_ecs::prelude::*;
+use bevy_log::error;
 use std::collections::BTreeMap;
 
 /// The current wisp errors, for display and logging.
