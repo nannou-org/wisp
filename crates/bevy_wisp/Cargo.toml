@@ -2,6 +2,7 @@
 name = "bevy_wisp"
 version = "0.1.0"
 description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
+documentation = "https://docs.rs/bevy_wisp"
 readme = "README.md"
 keywords = ["bevy", "wgsl", "shader", "live-coding", "creative-coding"]
 categories = ["game-development", "graphics", "rendering"]

@@ -2,12 +2,14 @@
 name = "wisp_editor"
 version = "0.1.0"
 description = "A live-coding editor for bevy_wisp shaders, native and on the web."
+readme = "README.md"
+keywords = ["bevy", "wgsl", "shader", "live-coding", "editor"]
+categories = ["graphics", "rendering", "visualization"]
 authors.workspace = true
 repository.workspace = true
 homepage.workspace = true
 license.workspace = true
 edition.workspace = true
-publish = false
 
 [[bin]]
 name = "wisp_editor"

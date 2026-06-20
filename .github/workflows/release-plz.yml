@@ -1,16 +1,16 @@
 # Automated releases: release-plz watches main, maintains a release PR
-# (version bump + changelog from conventional commits) and, when that PR
-# merges, tags the release and publishes a GitHub Release. Publishing to
-# crates.io is currently held back via `publish = false` in release-plz.toml
-# (waiting on bevy 0.19 stable).
+# (version bump + changelog from conventional commits) and, when that PR merges,
+# tags the release, publishes a GitHub Release and publishes the crates to
+# crates.io via Trusted Publishing (OIDC - no token: the release job below
+# requests `id-token: write` and release-plz exchanges it for a short-lived
+# crates.io token).
 #
-# Notes for arming crates.io publishing later:
-# - First publish needs a `CARGO_REGISTRY_TOKEN` repository secret; after the
-#   crate exists, configure crates.io Trusted Publishing (OIDC; the
-#   `id-token: write` permission below) and drop the token.
-# - The default GITHUB_TOKEN cannot trigger workflows, so CI does not run on
-#   the release PR itself. Switch to a fine-grained PAT or GitHub App token
-#   if that becomes important.
+# The first publish of each crate is done manually/locally, because crates.io
+# Trusted Publishing can only be configured on a crate that already exists.
+#
+# Note: the default GITHUB_TOKEN cannot trigger workflows, so CI does not run on
+# the release PR itself. Switch to a fine-grained PAT or GitHub App token if that
+# becomes important.
 name: release-plz
 permissions: {}
 
@@ -35,7 +35,6 @@ jobs:
           command: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
 
   release-plz-pr:
     name: release-pr
