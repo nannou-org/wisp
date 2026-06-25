@@ -6,9 +6,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:,">
 
-    <!-- trunk asset directives. `../Cargo.toml` resolves to `editor/Cargo.toml`;
-         the default features build the WebGL2 backend (broad browser support).
-         For the WebGPU backend, build with
+    <!-- trunk asset directives. `../Cargo.toml` resolves to
+         `crates/wisp_editor/Cargo.toml`; the default features build the WebGL2
+         backend (broad browser support). For the WebGPU backend, build with
          `--no-default-features --features webgpu`. -->
     
 <script type="module">
@@ -77,10 +77,10 @@ async function __trunkInitializer(init, source, sourceSize, initializer, initWit
 }
 
 
-import init, * as bindings from './wisp-editor.js';
+import init, * as bindings from './wisp_editor.js';
 import initializer from './initializer.js';
 
-const wasm = await __trunkInitializer(init, './wisp-editor_bg.wasm', 32817603, initializer(), true);
+const wasm = await __trunkInitializer(init, './wisp_editor_bg.wasm', 32808604, initializer(), true);
 
 
 window.wasmBindings = bindings;
@@ -132,7 +132,7 @@ dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
             transition: width 0.2s ease;
         }
     </style>
-<link rel="modulepreload" href="./wisp-editor.js" crossorigin="anonymous" integrity="sha384-QkkHOwhYHmi7L6PUrJo3RoXNn2udgI6rJ04yFoiXBizVhzZfl5ewXyB5RY1CD7oA"><link rel="modulepreload" href="./initializer.js" crossorigin="anonymous" integrity="sha384-AUQ/wcWeusvS1MGxTIiNOqRU1Atxh7QAhWlkwAzCSVIen5YlhA7h6DtjwhGXAWUo"><link rel="preload" href="./wisp-editor_bg.wasm" crossorigin="anonymous" integrity="sha384-oMhqi/sUcK+Ar+lL7/2HuvzWCIWD0w7bvlufDnlN2TVkhKfcpsMzSTlBfRygbb9Q" as="fetch" type="application/wasm"></head>
+<link rel="modulepreload" href="./wisp_editor.js" crossorigin="anonymous" integrity="sha384-BPIpFbAZUHGxcl/Xb+vORSSyI7rDswwAexWZAqHbPZDbpF22iAOTYhlX84xdPih+"><link rel="modulepreload" href="./initializer.js" crossorigin="anonymous" integrity="sha384-AUQ/wcWeusvS1MGxTIiNOqRU1Atxh7QAhWlkwAzCSVIen5YlhA7h6DtjwhGXAWUo"><link rel="preload" href="./wisp_editor_bg.wasm" crossorigin="anonymous" integrity="sha384-j1r1jX8sMoyzaHV/joZQGjOHDwNcsdOyWjHPTtMNZ4tjGGrw7T9J2TfUQmwlstoE" as="fetch" type="application/wasm"></head>
 <body>
     <div id="loading">
         <p id="loading-title">w i s p</p>
