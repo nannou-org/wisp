@@ -1,0 +1,68 @@
+[package]
+name = "bevy_wisp"
+version = "0.2.1"
+description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
+documentation = "https://docs.rs/bevy_wisp"
+readme = "README.md"
+keywords = ["bevy", "wgsl", "shader", "live-coding", "creative-coding"]
+categories = ["game-development", "graphics", "rendering"]
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
+
+[dependencies]
+# The individual bevy subcrates wisp uses, rather than the umbrella `bevy` crate,
+# so downstream builds pull in only what the library needs. The examples still
+# use the full `bevy` as a dev-dependency.
+bevy_app = { workspace = true }
+bevy_asset = { workspace = true }
+bevy_camera = { workspace = true }
+bevy_core_pipeline = { workspace = true }
+bevy_derive = { workspace = true }
+bevy_ecs = { workspace = true }
+bevy_image = { workspace = true }
+bevy_input = { workspace = true }
+bevy_log = { workspace = true }
+bevy_math = { workspace = true }
+bevy_platform = { workspace = true }
+bevy_reflect = { workspace = true }
+bevy_render = { workspace = true }
+bevy_shader = { workspace = true }
+bevy_time = { workspace = true }
+bevy_utils = { workspace = true }
+bevy_window = { workspace = true }
+bevy_egui = { workspace = true, optional = true }
+bytemuck = "1"
+evalexpr = "13"
+half = { version = "2", optional = true }
+# Kept in lockstep with the `naga` used by `bevy_shader`, so that wisp's
+# reflection accepts exactly the WGSL that bevy compiles.
+naga = { version = "29", default-features = false, features = ["wgsl-in"] }
+rustfft = { version = "6", optional = true }
+thiserror = "2"
+
+[dev-dependencies]
+# The examples want windowing, winit and friends.
+bevy = { workspace = true }
+
+[features]
+# Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
+# `WispAudio` resource.
+audio = ["dep:half", "dep:rustfft"]
+# Expose the bundled example shaders as `&str` constants (see the
+# `example_shaders` module) so tools can embed them without a filesystem - used
+# by the `wisp_editor`.
+example_shaders = []
+# Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
+# `EguiPlugin` to be added to the app.
+ui = ["dep:bevy_egui"]
+
+[[example]]
+name = "audio"
+required-features = ["audio"]
+
+[[example]]
+name = "ui"
+required-features = ["ui"]

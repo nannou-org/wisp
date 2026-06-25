@@ -11,10 +11,14 @@
 
 use crate::reflect::{self, ReflectError};
 use crate::schema::{self, SchemaError, WispSchema};
-use bevy::asset::io::Reader;
-use bevy::asset::{AssetLoader, LoadContext};
-use bevy::prelude::*;
-use bevy::render::extract_component::ExtractComponent;
+use bevy_asset::io::Reader;
+use bevy_asset::prelude::*;
+use bevy_asset::{AssetLoader, LoadContext};
+use bevy_derive::{Deref, DerefMut};
+use bevy_ecs::prelude::*;
+use bevy_reflect::prelude::TypePath;
+use bevy_render::extract_component::ExtractComponent;
+use bevy_shader::Shader;
 use thiserror::Error;
 
 /// A loaded wisp shader: its reflected interface and compiled shader module.

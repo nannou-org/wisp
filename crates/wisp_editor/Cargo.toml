@@ -1,24 +1,31 @@
 [package]
-name = "wisp-editor"
-version = "0.1.0"
+name = "wisp_editor"
+version = "0.2.0"
 description = "A live-coding editor for bevy_wisp shaders, native and on the web."
-authors = ["mitchmindtree <mitchell.nordine@gmail.com>"]
-repository = "https://github.com/nannou-org/wisp"
-license = "MIT OR Apache-2.0"
-edition = "2024"
-publish = false
+readme = "README.md"
+keywords = ["bevy", "wgsl", "shader", "live-coding", "editor"]
+categories = ["graphics", "rendering", "visualization"]
+authors.workspace = true
+repository.workspace = true
+homepage.workspace = true
+license.workspace = true
+edition.workspace = true
 
 [[bin]]
-name = "wisp-editor"
+name = "wisp_editor"
 path = "src/main.rs"
 
 [dependencies]
-bevy_wisp = { path = "..", features = ["ui", "audio"] }
+bevy_wisp = { version = "0.2.1", path = "../bevy_wisp", features = [
+    "ui",
+    "audio",
+    "example_shaders",
+] }
 # Full bevy for windowing/winit/render (native backends).
-bevy = "0.19.0-rc.2"
+bevy = { workspace = true }
 # The editor names `bevy_egui::` directly, so depend on it explicitly rather
 # than relying on bevy_wisp's re-export behind the `ui` feature.
-bevy_egui = "0.40.0-rc.1"
+bevy_egui = { workspace = true }
 # Syntax highlighting, kept in lockstep with the `egui` used by `bevy_egui`.
 egui_extras = { version = "0.34", default-features = false }
 egui_tiles = "0.15"
@@ -26,7 +33,7 @@ egui_tiles = "0.15"
 # data dir) and the web (browser local storage). `default-features = false`
 # drops bevy_pkv's own `bevy` feature, which would otherwise pull in a second,
 # conflicting `bevy_ecs`; the store is wrapped in a local `Resource` instead.
-bevy_pkv = { version = "0.14", default-features = false, features = ["redb"] }
+bevy_pkv = { version = "0.16", default-features = false, features = ["redb"] }
 
 # Microphone capture for `@audio` shaders; native only (cpal's web backends do
 # not implement input yet). Pinned to the version bevy's audio already uses, so

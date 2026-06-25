@@ -15,10 +15,12 @@
 use crate::asset::{Wisp, WispHandle};
 use crate::inputs::{WispInputs, WispValue};
 use crate::schema::TextureRole;
-use bevy::asset::RenderAssetUsages;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
+use bevy_asset::RenderAssetUsages;
+use bevy_asset::prelude::Assets;
+use bevy_ecs::prelude::*;
+use bevy_image::prelude::Image;
+use bevy_platform::collections::HashMap;
+use bevy_render::render_resource::{Extent3d, TextureDimension, TextureFormat, TextureUsages};
 use rustfft::num_complex::Complex;
 use rustfft::{Fft, FftPlanner};
 use std::collections::VecDeque;

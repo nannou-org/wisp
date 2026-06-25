@@ -48,10 +48,12 @@ use crate::asset::{Wisp, WispHandle, WispLoader};
 use crate::error::WispErrors;
 use crate::globals::FrameGlobals;
 use crate::inputs::{WispInputs, inputs_from_schema, rematch_inputs};
-use bevy::camera::RenderTarget;
-use bevy::platform::collections::HashSet;
-use bevy::prelude::*;
-use bevy::window::{PresentMode, PrimaryWindow, WindowRef};
+use bevy_app::prelude::*;
+use bevy_asset::prelude::*;
+use bevy_camera::RenderTarget;
+use bevy_ecs::prelude::*;
+use bevy_platform::collections::HashSet;
+use bevy_window::{PresentMode, PrimaryWindow, Window, WindowRef};
 
 mod align;
 pub mod annot;
@@ -59,6 +61,8 @@ pub mod asset;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod error;
+#[cfg(feature = "example_shaders")]
+pub mod example_shaders;
 pub mod globals;
 pub mod inputs;
 pub mod reflect;

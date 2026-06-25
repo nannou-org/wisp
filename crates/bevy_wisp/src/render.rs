@@ -12,24 +12,30 @@ use crate::globals::{FrameGlobals, pack_globals};
 use crate::inputs::{WispInputs, WispValue, pack_params};
 use crate::schema::{BindingDesc, BindingTy, PassStage, TextureRole, WispSchema, requires_compute};
 use crate::targets::WispPassTargets;
-use bevy::core_pipeline::FullscreenShader;
-use bevy::core_pipeline::schedule::{Core3d, Core3dSystems};
-use bevy::ecs::system::SystemParamItem;
-use bevy::platform::collections::HashMap;
-use bevy::prelude::*;
-use bevy::render::MainWorld;
-use bevy::render::camera::ExtractedCamera;
-use bevy::render::extract_component::ExtractComponentPlugin;
-use bevy::render::extract_resource::ExtractResourcePlugin;
-use bevy::render::render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets};
-use bevy::render::render_resource::binding_types::{
+use bevy_app::prelude::*;
+use bevy_asset::prelude::*;
+use bevy_core_pipeline::FullscreenShader;
+use bevy_core_pipeline::schedule::{Core3d, Core3dSystems};
+use bevy_ecs::prelude::*;
+use bevy_ecs::system::SystemParamItem;
+use bevy_image::prelude::Image;
+use bevy_log::error;
+use bevy_math::Vec2;
+use bevy_platform::collections::HashMap;
+use bevy_render::camera::ExtractedCamera;
+use bevy_render::extract_component::ExtractComponentPlugin;
+use bevy_render::extract_resource::ExtractResourcePlugin;
+use bevy_render::render_asset::{PrepareAssetError, RenderAsset, RenderAssetPlugin, RenderAssets};
+use bevy_render::render_resource::binding_types::{
     sampler, texture_2d, texture_storage_2d, uniform_buffer_sized,
 };
-use bevy::render::render_resource::*;
-use bevy::render::renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery};
-use bevy::render::texture::{DefaultImageSampler, GpuImage};
-use bevy::render::view::ViewTarget;
-use bevy::render::{Render, RenderApp, RenderSystems};
+use bevy_render::render_resource::*;
+use bevy_render::renderer::{RenderAdapter, RenderContext, RenderDevice, ViewQuery};
+use bevy_render::texture::{DefaultImageSampler, GpuImage};
+use bevy_render::view::{Msaa, ViewTarget};
+use bevy_render::{ExtractSchedule, MainWorld, Render, RenderApp, RenderSystems};
+use bevy_shader::Shader;
+use bevy_utils::default;
 use std::num::NonZero;
 
 pub struct WispRenderPlugin;

@@ -10,6 +10,24 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/nannou-org/wisp/releases/tag/v0.2.1) - 2026-06-25
+
+### Added
+
+- `example_shaders` feature exposing the bundled example shaders as `&str`
+  constants, so tools (e.g. `wisp_editor`) can embed them without reaching into
+  this crate's assets directory
+
+## [0.2.0](https://github.com/nannou-org/wisp/releases/tag/v0.2.0) - 2026-06-25
+
+### Changed
+
+- Update to Bevy 0.19 / bevy_egui 0.40 stable
+- Restructure into a Cargo workspace (`crates/bevy_wisp`, `crates/wisp_editor`)
+- Depend on the individual bevy subcrates rather than the umbrella `bevy` crate,
+  so downstream builds pull in only what the library needs
+- Update `evalexpr` to 13
+
 ## [0.1.0](https://github.com/nannou-org/wisp/releases/tag/v0.1.0) - 2026-06-12
 
 ### Added

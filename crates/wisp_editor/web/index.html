@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" href="data:,">
 
-    <!-- trunk asset directives. `../Cargo.toml` resolves to `editor/Cargo.toml`;
-         the default features build the WebGL2 backend (broad browser support).
-         For the WebGPU backend, build with
+    <!-- trunk asset directives. `../Cargo.toml` resolves to
+         `crates/wisp_editor/Cargo.toml`; the default features build the WebGL2
+         backend (broad browser support). For the WebGPU backend, build with
          `--no-default-features --features webgpu`. -->
-    <link data-trunk rel="rust" href="../Cargo.toml" data-bin="wisp-editor"
+    <link data-trunk rel="rust" href="../Cargo.toml" data-bin="wisp_editor"
           data-cargo-profile-release="wasm_release"
           data-wasm-opt="z"
           data-wasm-opt-params="--enable-bulk-memory --enable-reference-types --enable-multivalue --enable-tail-call --enable-nontrapping-float-to-int"

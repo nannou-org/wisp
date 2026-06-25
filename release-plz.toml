@@ -1,20 +1,12 @@
 [workspace]
-# Hold back crates.io publishing until bevy 0.19 stable lands - release PRs,
-# version bumps, the changelog, git tags and GitHub Releases all still flow.
-# To arm publishing: flip this to `true` and add a CARGO_REGISTRY_TOKEN
-# repository secret (after the first publish, switch to crates.io Trusted
-# Publishing and drop the token).
-publish = false
+# Both crates publish to crates.io. The first publish of each is done manually
+# (crates.io Trusted Publishing can only be configured on a crate that already
+# exists); thereafter release-plz publishes via Trusted Publishing (OIDC) with
+# no token - see `.github/workflows/release-plz.yml`.
+publish = true
 changelog_update = true
 git_tag_name = "v{{ version }}"
 git_release_enable = true
 # Checks API compatibility against the latest published release via
 # cargo-semver-checks (skipped automatically while nothing is published).
 semver_check = true
-
-# The editor is an app, not a library - keep release-plz from versioning,
-# changelogging, tagging or publishing it.
-[[package]]
-name = "wisp-editor"
-release = false
-publish = false

@@ -9,13 +9,17 @@
 use crate::asset::{Wisp, WispHandle};
 use crate::render::supports_compute;
 use crate::schema::{PassSchema, PassStage, TargetSchema, WispSchema, eval_size, requires_compute};
-use bevy::camera::RenderTarget;
-use bevy::log::warn_once;
-use bevy::prelude::*;
-use bevy::render::extract_component::ExtractComponent;
-use bevy::render::render_resource::{Extent3d, TextureUsages};
-use bevy::render::renderer::RenderAdapter;
-use bevy::window::{PrimaryWindow, WindowRef};
+use bevy_asset::prelude::{Assets, Handle};
+use bevy_camera::{Camera, RenderTarget};
+use bevy_ecs::prelude::*;
+use bevy_image::prelude::Image;
+use bevy_log::warn_once;
+use bevy_math::UVec2;
+use bevy_render::extract_component::ExtractComponent;
+use bevy_render::render_resource::{Extent3d, TextureUsages};
+use bevy_render::renderer::RenderAdapter;
+use bevy_utils::default;
+use bevy_window::{PrimaryWindow, Window, WindowRef};
 
 /// The intermediate target images for a wisp camera, parallel to the schema's
 /// passes (`None` for the final pass).

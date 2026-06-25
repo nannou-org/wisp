@@ -22,8 +22,8 @@
 use crate::annot::{self, Annotation, Arg, Docs, Value};
 use crate::globals::{GlobalKind, GlobalsSchema};
 use crate::reflect::ReflectedModule;
-use bevy::math::UVec2;
-use bevy::render::render_resource::{ShaderStages, TextureFormat};
+use bevy_math::UVec2;
+use bevy_render::render_resource::{ShaderStages, TextureFormat};
 use naga::ir::DocComments;
 use std::collections::BTreeMap;
 use thiserror::Error;
