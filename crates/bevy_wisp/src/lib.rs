@@ -61,6 +61,8 @@ pub mod asset;
 #[cfg(feature = "audio")]
 pub mod audio;
 pub mod error;
+#[cfg(feature = "example_shaders")]
+pub mod example_shaders;
 pub mod globals;
 pub mod inputs;
 pub mod reflect;

@@ -55,47 +55,12 @@ fn fragment(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
 }
 "#;
 
-/// The shaders compiled into the binary. They are registered with the
-/// `embedded://` asset source at startup (see [`register_bundled`]) and shown in
-/// the picker unless a user shader of the same name shadows them.
-const BUNDLED: &[(&str, &str)] = &[
-    (
-        "test_audio",
-        include_str!("../../bevy_wisp/assets/wisp/test_audio.wgsl"),
-    ),
-    (
-        "test_audio_fft",
-        include_str!("../../bevy_wisp/assets/wisp/test_audio_fft.wgsl"),
-    ),
-    (
-        "test_color",
-        include_str!("../../bevy_wisp/assets/wisp/test_color.wgsl"),
-    ),
-    (
-        "test_compute",
-        include_str!("../../bevy_wisp/assets/wisp/test_compute.wgsl"),
-    ),
-    (
-        "test_float",
-        include_str!("../../bevy_wisp/assets/wisp/test_float.wgsl"),
-    ),
-    (
-        "test_image",
-        include_str!("../../bevy_wisp/assets/wisp/test_image.wgsl"),
-    ),
-    (
-        "test_inputs",
-        include_str!("../../bevy_wisp/assets/wisp/test_inputs.wgsl"),
-    ),
-    (
-        "test_multi_pass_rendering",
-        include_str!("../../bevy_wisp/assets/wisp/test_multi_pass_rendering.wgsl"),
-    ),
-    (
-        "test_persistent_buffer",
-        include_str!("../../bevy_wisp/assets/wisp/test_persistent_buffer.wgsl"),
-    ),
-];
+/// The example shaders compiled into the binary, sourced from `bevy_wisp` so
+/// their `.wgsl` files live in a single place (see
+/// [`bevy_wisp::example_shaders`]). They are registered with the `embedded://`
+/// asset source at startup (see [`register_bundled`]) and shown in the picker
+/// unless a user shader of the same name shadows them.
+const BUNDLED: &[(&str, &str)] = bevy_wisp::example_shaders::ALL;
 
 /// The pkv key holding the index of user shader names. The store cannot
 /// enumerate keys, so the names are kept in this list alongside the per-shader

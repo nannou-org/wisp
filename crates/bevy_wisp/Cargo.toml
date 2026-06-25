@@ -1,6 +1,6 @@
 [package]
 name = "bevy_wisp"
-version = "0.2.0"
+version = "0.2.1"
 description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
 documentation = "https://docs.rs/bevy_wisp"
 readme = "README.md"
@@ -51,6 +51,10 @@ bevy = { workspace = true }
 # Waveform/FFT textures for `@audio`/`@audio_fft` bindings, fed from the
 # `WispAudio` resource.
 audio = ["dep:half", "dep:rustfft"]
+# Expose the bundled example shaders as `&str` constants (see the
+# `example_shaders` module) so tools can embed them without a filesystem - used
+# by the `wisp_editor`.
+example_shaders = []
 # Auto-generated egui control panel for wisp inputs. Requires `bevy_egui`'s
 # `EguiPlugin` to be added to the app.
 ui = ["dep:bevy_egui"]

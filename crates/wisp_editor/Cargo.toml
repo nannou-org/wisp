@@ -16,7 +16,11 @@ name = "wisp_editor"
 path = "src/main.rs"
 
 [dependencies]
-bevy_wisp = { version = "0.2", path = "../bevy_wisp", features = ["ui", "audio"] }
+bevy_wisp = { version = "0.2.1", path = "../bevy_wisp", features = [
+    "ui",
+    "audio",
+    "example_shaders",
+] }
 # Full bevy for windowing/winit/render (native backends).
 bevy = { workspace = true }
 # The editor names `bevy_egui::` directly, so depend on it explicitly rather
