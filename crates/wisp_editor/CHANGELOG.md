@@ -10,6 +10,12 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/nannou-org/wisp/compare/wisp_editor-v0.2.0...wisp_editor-v0.2.1) - 2026-06-26
+
+### Other
+
+- *(release)* per-crate tags and backfill editor changelog
+
 ## [0.2.0](https://github.com/nannou-org/wisp/releases/tag/wisp_editor-v0.2.0) - 2026-06-25
 
 First release of the editor as its own crate, split out of the `bevy_wisp`

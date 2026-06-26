@@ -1866,7 +1866,7 @@ dependencies = [
 
 [[package]]
 name = "bevy_wisp"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "bevy",
  "bevy_app",
@@ -6689,7 +6689,7 @@ dependencies = [
 
 [[package]]
 name = "wisp_editor"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bevy",
  "bevy_egui",

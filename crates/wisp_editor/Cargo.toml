@@ -1,6 +1,6 @@
 [package]
 name = "wisp_editor"
-version = "0.2.0"
+version = "0.2.1"
 description = "A live-coding editor for bevy_wisp shaders, native and on the web."
 readme = "README.md"
 keywords = ["bevy", "wgsl", "shader", "live-coding", "editor"]
@@ -16,7 +16,7 @@ name = "wisp_editor"
 path = "src/main.rs"
 
 [dependencies]
-bevy_wisp = { version = "0.2.1", path = "../bevy_wisp", features = [
+bevy_wisp = { version = "0.2.2", path = "../bevy_wisp", features = [
     "ui",
     "audio",
     "example_shaders",

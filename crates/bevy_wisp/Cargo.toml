@@ -1,6 +1,6 @@
 [package]
 name = "bevy_wisp"
-version = "0.2.1"
+version = "0.2.2"
 description = "Interactive WGSL shaders for Bevy - reflected inputs, multi-pass rendering, hot reload."
 documentation = "https://docs.rs/bevy_wisp"
 readme = "README.md"
