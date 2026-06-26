@@ -5,7 +5,10 @@
 # no token - see `.github/workflows/release-plz.yml`.
 publish = true
 changelog_update = true
-git_tag_name = "v{{ version }}"
+# Per-crate tags (`<crate>-v<version>`) so the two independently-versioned crates
+# can't collide on a shared `v<version>` tag when they happen to release the same
+# version in one run.
+git_tag_name = "{{ package }}-v{{ version }}"
 git_release_enable = true
 # Checks API compatibility against the latest published release via
 # cargo-semver-checks (skipped automatically while nothing is published).

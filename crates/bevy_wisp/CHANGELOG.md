@@ -10,7 +10,7 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
-## [0.2.1](https://github.com/nannou-org/wisp/releases/tag/v0.2.1) - 2026-06-25
+## [0.2.1](https://github.com/nannou-org/wisp/releases/tag/bevy_wisp-v0.2.1) - 2026-06-25
 
 ### Added
 
@@ -18,7 +18,7 @@ This file is maintained by [release-plz](https://release-plz.dev) from
   constants, so tools (e.g. `wisp_editor`) can embed them without reaching into
   this crate's assets directory
 
-## [0.2.0](https://github.com/nannou-org/wisp/releases/tag/v0.2.0) - 2026-06-25
+## [0.2.0](https://github.com/nannou-org/wisp/releases/tag/bevy_wisp-v0.2.0) - 2026-06-25
 
 ### Changed
 
