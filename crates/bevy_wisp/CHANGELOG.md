@@ -10,6 +10,12 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
+## [0.2.2](https://github.com/nannou-org/wisp/compare/bevy_wisp-v0.2.1...bevy_wisp-v0.2.2) - 2026-06-26
+
+### Other
+
+- *(release)* per-crate tags and backfill editor changelog
+
 ## [0.2.1](https://github.com/nannou-org/wisp/releases/tag/bevy_wisp-v0.2.1) - 2026-06-25
 
 ### Added
