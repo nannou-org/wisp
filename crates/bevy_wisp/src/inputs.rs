@@ -12,11 +12,13 @@ use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_image::prelude::Image;
 use bevy_math::{Vec2, Vec3, Vec4};
+use bevy_render::RenderApp;
 use bevy_render::extract_component::ExtractComponent;
 use std::collections::BTreeMap;
 
 /// The current input values for a wisp shader, keyed by name.
 #[derive(Component, ExtractComponent, Clone, Debug, Default, Deref, DerefMut)]
+#[extract_app(RenderApp)]
 pub struct WispInputs(pub BTreeMap<String, WispValue>);
 
 /// A single input value.

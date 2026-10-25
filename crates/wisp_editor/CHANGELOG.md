@@ -10,6 +10,14 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/nannou-org/wisp/releases/tag/wisp_editor-v0.3.0) - 2026-10-25
+
+### Changed
+
+- Update to Bevy 0.20 / bevy_egui 0.43 (egui 0.36), `bevy_wisp` 0.3,
+  `egui_tiles` 0.17 and `bevy_pkv` 0.17
+- The editor UI runs in bevy_egui's `EguiPrimaryContextPass` schedule
+
 ## [0.2.0](https://github.com/nannou-org/wisp/releases/tag/wisp_editor-v0.2.0) - 2026-06-25
 
 First release of the editor as its own crate, split out of the `bevy_wisp`

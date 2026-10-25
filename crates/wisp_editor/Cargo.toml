@@ -1,6 +1,6 @@
 [package]
 name = "wisp_editor"
-version = "0.2.0"
+version = "0.3.0"
 description = "A live-coding editor for bevy_wisp shaders, native and on the web."
 readme = "README.md"
 keywords = ["bevy", "wgsl", "shader", "live-coding", "editor"]
@@ -16,7 +16,7 @@ name = "wisp_editor"
 path = "src/main.rs"
 
 [dependencies]
-bevy_wisp = { version = "0.2.1", path = "../bevy_wisp", features = [
+bevy_wisp = { version = "0.3.0", path = "../bevy_wisp", features = [
     "ui",
     "audio",
     "example_shaders",
@@ -27,13 +27,11 @@ bevy = { workspace = true }
 # than relying on bevy_wisp's re-export behind the `ui` feature.
 bevy_egui = { workspace = true }
 # Syntax highlighting, kept in lockstep with the `egui` used by `bevy_egui`.
-egui_extras = { version = "0.34", default-features = false }
-egui_tiles = "0.15"
+egui_extras = { version = "0.36", default-features = false }
+egui_tiles = "0.17.1"
 # Persistent shader storage, the same on native (a `redb` file in the platform
-# data dir) and the web (browser local storage). `default-features = false`
-# drops bevy_pkv's own `bevy` feature, which would otherwise pull in a second,
-# conflicting `bevy_ecs`; the store is wrapped in a local `Resource` instead.
-bevy_pkv = { version = "0.16", default-features = false, features = ["redb"] }
+# data dir) and the web (browser local storage).
+bevy_pkv = "0.17"
 
 # Microphone capture for `@audio` shaders; native only (cpal's web backends do
 # not implement input yet). Pinned to the version bevy's audio already uses, so

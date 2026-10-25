@@ -17,6 +17,7 @@ use bevy_asset::{AssetLoader, LoadContext};
 use bevy_derive::{Deref, DerefMut};
 use bevy_ecs::prelude::*;
 use bevy_reflect::prelude::TypePath;
+use bevy_render::RenderApp;
 use bevy_render::extract_component::ExtractComponent;
 use bevy_shader::Shader;
 use thiserror::Error;
@@ -32,6 +33,7 @@ pub struct Wisp {
 /// [`Wisp`]. Output goes wherever the camera renders - a window, or an `Image`
 /// render target.
 #[derive(Component, ExtractComponent, Deref, DerefMut, Debug, Default, Clone)]
+#[extract_app(RenderApp)]
 pub struct WispHandle(pub Handle<Wisp>);
 
 #[derive(Default, TypePath)]

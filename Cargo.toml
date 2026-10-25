@@ -12,28 +12,29 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 # The full umbrella crate, for the editor (windowing/winit/render) and the
 # library's examples; the library itself depends on the individual subcrates.
-bevy = "0.19"
-bevy_app = "0.19"
-bevy_asset = "0.19"
-bevy_camera = "0.19"
-bevy_core_pipeline = "0.19"
-bevy_derive = "0.19"
-bevy_ecs = "0.19"
-bevy_image = "0.19"
-bevy_input = "0.19"
-bevy_log = "0.19"
+bevy = "0.20"
+bevy_app = "0.20"
+bevy_asset = "0.20"
+bevy_camera = "0.20"
+bevy_core_pipeline = "0.20"
+bevy_derive = "0.20"
+bevy_ecs = "0.20"
+bevy_extract = "0.20"
+bevy_image = "0.20"
+bevy_input = "0.20"
+bevy_log = "0.20"
 # Only the vector types are used; drop the default `rand` and `curve` features.
-bevy_math = { version = "0.19", default-features = false, features = ["std"] }
-bevy_platform = "0.19"
-bevy_reflect = "0.19"
-bevy_render = "0.19"
-bevy_shader = "0.19"
-bevy_time = "0.19"
+bevy_math = { version = "0.20", default-features = false, features = ["std"] }
+bevy_platform = "0.20"
+bevy_reflect = "0.20"
+bevy_render = "0.20"
+bevy_shader = "0.20"
+bevy_time = "0.20"
 # Only the `default()` helper is used; drop the default `parallel` and
 # `buffered_channel` features.
-bevy_utils = { version = "0.19", default-features = false }
-bevy_window = "0.19"
-bevy_egui = "0.40"
+bevy_utils = { version = "0.20", default-features = false }
+bevy_window = "0.20"
+bevy_egui = "0.43.1"
 
 # Size-optimised profile for the wasm build of the editor (see
 # `crates/wisp_editor`). Profiles must live in the workspace root manifest.

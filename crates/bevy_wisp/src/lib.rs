@@ -133,13 +133,8 @@ impl Plugin for WispPlugin {
         #[cfg(feature = "audio")]
         app.init_resource::<audio::WispAudio>()
             .add_systems(Update, audio::update_audio_textures.after(sync_wisp_inputs));
-        // The panel needs `EguiPlugin`; stay inert (rather than panicking on the
-        // missing resource) when the user hasn't added it.
         #[cfg(feature = "ui")]
-        app.add_systems(
-            Update,
-            ui::wisp_ui.run_if(resource_exists::<bevy_egui::EguiUserTextures>),
-        );
+        app.add_systems(bevy_egui::EguiPrimaryContextPass, ui::wisp_ui);
     }
 }
 

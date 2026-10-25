@@ -10,6 +10,21 @@ This file is maintained by [release-plz](https://release-plz.dev) from
 
 ## [Unreleased]
 
+## [0.3.0](https://github.com/nannou-org/wisp/releases/tag/bevy_wisp-v0.3.0) - 2026-10-25
+
+### Changed
+
+- [**breaking**] Update to Bevy 0.20 / bevy_egui 0.43 (egui 0.36), with naga 30
+  to match wgpu 30
+- The `ui` feature's params panel runs in bevy_egui's `EguiPrimaryContextPass`
+  schedule, since bevy_egui 0.42 removed single-pass mode
+
+### Removed
+
+- [**breaking**] `ReflectError::Directive` and `reflect::find_directive`. Bevy
+  0.20 hands WGSL to wgpu untouched, so a `#import` line is now an ordinary
+  parse error in both reflection and compilation
+
 ## [0.2.1](https://github.com/nannou-org/wisp/releases/tag/bevy_wisp-v0.2.1) - 2026-06-25
 
 ### Added

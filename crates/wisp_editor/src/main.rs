@@ -22,7 +22,7 @@ use bevy::asset::io::embedded::EmbeddedAssetRegistry;
 use bevy::camera::Viewport;
 use bevy::prelude::*;
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
-use bevy_egui::{EguiContexts, EguiPlugin, egui};
+use bevy_egui::{EguiContexts, EguiPlugin, EguiPrimaryContextPass, egui};
 use bevy_pkv::PkvStore;
 use bevy_wisp::prelude::*;
 use bevy_wisp::ui::{errors_ui, params_ui};
@@ -67,14 +67,6 @@ const BUNDLED: &[(&str, &str)] = bevy_wisp::example_shaders::ALL;
 /// source entries (see [`shader_source_key`]).
 const SHADER_INDEX_KEY: &str = "shaders";
 
-/// Persistent shader storage, wrapping a [`PkvStore`]. The store backs the same
-/// on native (a `redb` file in the platform data dir) and on the web (browser
-/// local storage), so saving and loading work identically on both. bevy_pkv's
-/// own `bevy` feature is disabled to avoid a second `bevy_ecs`, so this newtype
-/// supplies the [`Resource`] impl.
-#[derive(Resource)]
-struct Pkv(PkvStore);
-
 /// A built-in image bound to every `@image` shader input the user has not set.
 /// Without it those inputs keep bevy's 1x1 white placeholder, so an image
 /// shader shows a flat, static frame; a real picture makes it visibly work.
@@ -100,7 +92,7 @@ struct ShaderFile {
 enum ShaderSource {
     /// Compiled into the binary; loaded via `embedded://wisp/{name}.wgsl`.
     Bundled(&'static str),
-    /// A user shader whose source lives in the [`Pkv`] store under the file's
+    /// A user shader whose source lives in the [`PkvStore`] under the file's
     /// name, loaded via the embedded source after [`register_user_source`].
     User,
 }
@@ -146,7 +138,7 @@ struct TreeBehavior<'a> {
 impl Editor {
     /// The bundled shaders plus any user shaders stored in pkv, sorted by name.
     /// A stored shader shadows the bundled shader of the same name.
-    fn scan(pkv: &Pkv) -> Vec<ShaderFile> {
+    fn scan(pkv: &PkvStore) -> Vec<ShaderFile> {
         let mut files: Vec<ShaderFile> = BUNDLED
             .iter()
             .map(|&(name, source)| ShaderFile {
@@ -233,133 +225,127 @@ impl egui_tiles::Behavior<Pane> for TreeBehavior<'_> {
             Pane::Params => {
                 let frame =
                     egui::Frame::central_panel(ui.style()).fill(ui.visuals().text_edit_bg_color());
-                egui::CentralPanel::default()
-                    .frame(frame)
-                    .show_inside(ui, |ui| {
-                        egui::ScrollArea::vertical()
-                            .auto_shrink([false; 2])
-                            .show(ui, |ui| {
-                                if let (Some(wisp), Some(inputs)) = (wisp, inputs)
-                                    && wisp.schema.params.is_some()
-                                {
-                                    params_ui(ui, &wisp.schema, inputs);
-                                }
-                                // The audio capture controls, for shaders that
-                                // declare `@audio`/`@audio_fft` inputs.
-                                if let Some(wisp) = wisp
-                                    && audio::schema_has_audio(&wisp.schema)
-                                {
-                                    ui.separator();
-                                    audio::audio_ui(ui, audio);
-                                }
-                                if !errors.is_empty() {
-                                    ui.separator();
-                                    errors_ui(ui, errors);
-                                }
-                            });
-                    });
+                egui::CentralPanel::default().frame(frame).show(ui, |ui| {
+                    egui::ScrollArea::vertical()
+                        .auto_shrink([false; 2])
+                        .show(ui, |ui| {
+                            if let (Some(wisp), Some(inputs)) = (wisp, inputs)
+                                && wisp.schema.params.is_some()
+                            {
+                                params_ui(ui, &wisp.schema, inputs);
+                            }
+                            // The audio capture controls, for shaders that
+                            // declare `@audio`/`@audio_fft` inputs.
+                            if let Some(wisp) = wisp
+                                && audio::schema_has_audio(&wisp.schema)
+                            {
+                                ui.separator();
+                                audio::audio_ui(ui, audio);
+                            }
+                            if !errors.is_empty() {
+                                ui.separator();
+                                errors_ui(ui, errors);
+                            }
+                        });
+                });
             }
             // The file controls sit above the code editor. The pane paints its
             // own opaque background with no outer margin, so only the controls
             // are inset; the code editor reaches the pane edges.
             Pane::Editor => {
                 let frame = egui::Frame::new().fill(ui.visuals().text_edit_bg_color());
-                egui::CentralPanel::default()
-                    .frame(frame)
-                    .show_inside(ui, |ui| {
-                        egui::Frame::new().inner_margin(8).show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                let selected_label = editor
-                                    .selected
-                                    .map(|index| editor.label(index))
-                                    .unwrap_or_else(|| String::from("select a shader"));
-                                egui::ComboBox::from_id_salt("shader_select")
-                                    .selected_text(selected_label)
-                                    .show_ui(ui, |ui| {
-                                        for index in 0..editor.files.len() {
-                                            let checked = editor.selected == Some(index);
-                                            if ui
-                                                .selectable_label(checked, editor.label(index))
-                                                .clicked()
-                                            {
-                                                *action = Some(Action::Select(index));
-                                            }
+                egui::CentralPanel::default().frame(frame).show(ui, |ui| {
+                    egui::Frame::new().inner_margin(8).show(ui, |ui| {
+                        ui.horizontal(|ui| {
+                            let selected_label = editor
+                                .selected
+                                .map(|index| editor.label(index))
+                                .unwrap_or_else(|| String::from("select a shader"));
+                            egui::ComboBox::from_id_salt("shader_select")
+                                .selected_text(selected_label)
+                                .show_ui(ui, |ui| {
+                                    for index in 0..editor.files.len() {
+                                        let checked = editor.selected == Some(index);
+                                        if ui
+                                            .selectable_label(checked, editor.label(index))
+                                            .clicked()
+                                        {
+                                            *action = Some(Action::Select(index));
                                         }
-                                    });
-                                // Saving persists to the pkv store, which works
-                                // on native and the web alike.
-                                if ui
-                                    .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"))
-                                    .clicked()
-                                {
-                                    *action = Some(Action::Save);
-                                }
-                            });
-
-                            ui.horizontal(|ui| {
-                                let name = egui::TextEdit::singleline(&mut editor.new_name)
-                                    .hint_text("new_shader_name")
-                                    .desired_width(180.0);
-                                ui.add(name);
-                                if ui.button("create").clicked()
-                                    && !editor.new_name.trim().is_empty()
-                                {
-                                    *action = Some(Action::Create);
-                                }
-                            });
-                            if let Some(status) = &editor.status {
-                                ui.colored_label(egui::Color32::LIGHT_RED, status);
+                                    }
+                                });
+                            // Saving persists to the pkv store, which works
+                            // on native and the web alike.
+                            if ui
+                                .add_enabled(editor.dirty, egui::Button::new("save (ctrl+S)"))
+                                .clicked()
+                            {
+                                *action = Some(Action::Save);
                             }
                         });
 
-                        // The code editor fills the rest of the pane, flush to the
-                        // left, right and bottom edges; its own inner text margin is
-                        // enough, so an extra panel margin just looks noisy.
-                        let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
-                            ui.ctx(),
-                            ui.style(),
-                        );
-                        let mut layouter =
-                            |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
-                                // The simple built-in highlighter has no WGSL grammar;
-                                // Rust's is close enough (fn/let/var/struct/return/comments).
-                                let mut job = egui_extras::syntax_highlighting::highlight(
-                                    ui.ctx(),
-                                    ui.style(),
-                                    &theme,
-                                    buf.as_str(),
-                                    "rs",
-                                );
-                                job.wrap.max_width = wrap_width;
-                                ui.fonts_mut(|fonts| fonts.layout_job(job))
-                            };
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            // Freeze the text edit's frame at its resting look.
-                            // Left to itself the ~1px outline brightens on hover
-                            // and turns the accent colour on focus (egui picks
-                            // `widgets.hovered`/`selection.stroke`); passing an
-                            // explicit `Frame` takes it off that state-driven
-                            // path, so the code editor stops flickering as the
-                            // pointer crosses it or it gains focus.
-                            let resting = ui.visuals().widgets.inactive;
-                            let frame = egui::Frame::new()
-                                .fill(ui.visuals().text_edit_bg_color())
-                                .stroke(resting.bg_stroke)
-                                .corner_radius(resting.corner_radius)
-                                .inner_margin(ui.spacing().window_margin);
-                            let response = ui.add_sized(
-                                ui.available_size(),
-                                egui::TextEdit::multiline(&mut editor.buffer)
-                                    .code_editor()
-                                    .frame(frame)
-                                    .lock_focus(true)
-                                    .layouter(&mut layouter),
-                            );
-                            if response.changed() {
-                                editor.dirty = true;
+                        ui.horizontal(|ui| {
+                            let name = egui::TextEdit::singleline(&mut editor.new_name)
+                                .hint_text("new_shader_name")
+                                .desired_width(180.0);
+                            ui.add(name);
+                            if ui.button("create").clicked() && !editor.new_name.trim().is_empty() {
+                                *action = Some(Action::Create);
                             }
                         });
+                        if let Some(status) = &editor.status {
+                            ui.colored_label(egui::Color32::LIGHT_RED, status);
+                        }
                     });
+
+                    // The code editor fills the rest of the pane, flush to the
+                    // left, right and bottom edges; its own inner text margin is
+                    // enough, so an extra panel margin just looks noisy.
+                    let theme = egui_extras::syntax_highlighting::CodeTheme::from_memory(
+                        ui.ctx(),
+                        ui.style(),
+                    );
+                    let mut layouter =
+                        |ui: &egui::Ui, buf: &dyn egui::TextBuffer, wrap_width: f32| {
+                            // The simple built-in highlighter has no WGSL grammar;
+                            // Rust's is close enough (fn/let/var/struct/return/comments).
+                            let mut job = egui_extras::syntax_highlighting::highlight(
+                                ui.ctx(),
+                                ui.style(),
+                                &theme,
+                                buf.as_str(),
+                                "rs",
+                            );
+                            job.wrap.max_width = wrap_width;
+                            ui.fonts_mut(|fonts| fonts.layout_job(job))
+                        };
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        // Freeze the text edit's frame at its resting look.
+                        // Left to itself the ~1px outline brightens on hover
+                        // and turns the accent colour on focus (egui picks
+                        // `widgets.hovered`/`selection.stroke`); passing an
+                        // explicit `Frame` takes it off that state-driven
+                        // path, so the code editor stops flickering as the
+                        // pointer crosses it or it gains focus.
+                        let resting = ui.visuals().widgets.inactive;
+                        let frame = egui::Frame::new()
+                            .fill(ui.visuals().text_edit_bg_color())
+                            .stroke(resting.bg_stroke)
+                            .corner_radius(resting.corner_radius)
+                            .inner_margin(ui.spacing().window_margin);
+                        let response = ui.add_sized(
+                            ui.available_size(),
+                            egui::TextEdit::multiline(&mut editor.buffer)
+                                .code_editor()
+                                .frame(frame)
+                                .lock_focus(true)
+                                .layouter(&mut layouter),
+                        );
+                        if response.changed() {
+                            editor.dirty = true;
+                        }
+                    });
+                });
             }
         }
         egui_tiles::UiResponse::None
@@ -379,13 +365,7 @@ fn main() {
                 }),
                 ..default()
             }),
-            // Wisp's panel runs in `Update`, which needs egui's single-pass
-            // mode (see the `ui` example).
-            #[allow(deprecated)]
-            EguiPlugin {
-                enable_multipass_for_primary_context: false,
-                ..default()
-            },
+            EguiPlugin::default(),
             WispPlugin,
             audio::AudioPlugin,
         ))
@@ -396,9 +376,10 @@ fn main() {
             ..default()
         })
         // Persistent shader storage, the same on native and the web.
-        .insert_resource(Pkv(PkvStore::new("nannou-org", "wisp")))
+        .insert_resource(PkvStore::new("nannou-org", "wisp"))
         .add_systems(Startup, setup)
-        .add_systems(Update, (editor_ui, apply_default_image_inputs))
+        .add_systems(Update, apply_default_image_inputs)
+        .add_systems(EguiPrimaryContextPass, editor_ui)
         .run();
 }
 
@@ -458,24 +439,22 @@ fn shader_source_key(name: &str) -> String {
 }
 
 /// The names of all user-saved shaders, in save order (empty if none yet).
-fn stored_shader_names(pkv: &Pkv) -> Vec<String> {
-    pkv.0
-        .get::<Vec<String>>(SHADER_INDEX_KEY)
-        .unwrap_or_default()
+fn stored_shader_names(pkv: &PkvStore) -> Vec<String> {
+    pkv.get::<Vec<String>>(SHADER_INDEX_KEY).unwrap_or_default()
 }
 
 /// A user shader's stored source, if present.
-fn stored_shader_source(pkv: &Pkv, name: &str) -> Option<String> {
-    pkv.0.get::<String>(shader_source_key(name)).ok()
+fn stored_shader_source(pkv: &PkvStore, name: &str) -> Option<String> {
+    pkv.get::<String>(shader_source_key(name)).ok()
 }
 
 /// Persist a shader's source, adding its name to the index if not already there.
-fn store_shader(pkv: &mut Pkv, name: &str, source: &str) -> Result<(), bevy_pkv::SetError> {
-    pkv.0.set_string(shader_source_key(name), source)?;
+fn store_shader(pkv: &mut PkvStore, name: &str, source: &str) -> Result<(), bevy_pkv::SetError> {
+    pkv.set_string(shader_source_key(name), source)?;
     let mut names = stored_shader_names(pkv);
     if !names.iter().any(|n| n == name) {
         names.push(name.to_owned());
-        pkv.0.set(SHADER_INDEX_KEY, &names)?;
+        pkv.set(SHADER_INDEX_KEY, &names)?;
     }
     Ok(())
 }
@@ -516,7 +495,7 @@ fn setup(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
     embedded: Res<EmbeddedAssetRegistry>,
-    pkv: Res<Pkv>,
+    pkv: Res<PkvStore>,
     mut images: ResMut<Assets<Image>>,
     mut egui_settings: ResMut<bevy_egui::EguiGlobalSettings>,
 ) {
@@ -635,7 +614,7 @@ fn select(
     commands: &mut Commands,
     asset_server: &AssetServer,
     embedded: &EmbeddedAssetRegistry,
-    pkv: &Pkv,
+    pkv: &PkvStore,
 ) {
     let file = &editor.files[index];
     let handle: Handle<Wisp>;
@@ -669,7 +648,7 @@ fn editor_ui(
     mut tree: ResMut<EditorTree>,
     asset_server: Res<AssetServer>,
     embedded: Res<EmbeddedAssetRegistry>,
-    mut pkv: ResMut<Pkv>,
+    mut pkv: ResMut<PkvStore>,
     mut audio_config: ResMut<audio::AudioConfig>,
     wisps: Res<Assets<Wisp>>,
     errors: Res<WispErrors>,
@@ -702,24 +681,23 @@ fn editor_ui(
     let wisp = handle.and_then(|handle| wisps.get(&**handle));
     let mut shader_rect = None;
     simplify_tree(&mut tree.0, ctx);
-    // Top-level `CentralPanel::show` is deprecated mid-transition in egui 0.34
-    // (the replacement `show_inside` wants a root `Ui` that bevy_egui's
-    // single-pass mode doesn't expose); revisit alongside the multi-pass
-    // migration. The host frame is transparent so the shader pane reveals the
-    // wisp camera and each other pane paints its own background.
-    #[allow(deprecated)]
-    egui::CentralPanel::no_frame().show(ctx, |ui| {
-        let mut behavior = TreeBehavior {
-            editor: &mut editor,
-            errors: &errors,
-            wisp,
-            inputs: inputs.as_deref_mut(),
-            audio: &mut audio_config,
-            action: &mut action,
-            shader_rect: &mut shader_rect,
-        };
-        tree.0.ui(&mut behavior, ui);
-    });
+    let mut root = egui::Ui::new(
+        ctx.clone(),
+        "wisp_editor".into(),
+        egui::UiBuilder::new()
+            .layer_id(egui::LayerId::background())
+            .max_rect(ctx.content_rect()),
+    );
+    let mut behavior = TreeBehavior {
+        editor: &mut editor,
+        errors: &errors,
+        wisp,
+        inputs: inputs.as_deref_mut(),
+        audio: &mut audio_config,
+        action: &mut action,
+        shader_rect: &mut shader_rect,
+    };
+    tree.0.ui(&mut behavior, &mut root);
 
     // The shader camera follows the shader pane. When that pane is hidden as an
     // inactive tab there is no rect, so the camera goes inactive rather than

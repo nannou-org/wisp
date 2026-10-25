@@ -2,9 +2,10 @@
 //!
 //! Wisp shaders are plain WGSL - the same source that bevy compiles is parsed here
 //! (with doc comments retained) so that [`crate::schema`] can reflect the shader's
-//! interface. naga_oil preprocessor directives (`#import` and friends) are rejected
-//! so that what wisp reflects and what bevy compiles never diverge, and so error
-//! line numbers always match the file on disk.
+//! interface. Bevy hands WGSL to wgpu untouched (WESL imports and `@if`
+//! conditional compilation apply only to `.wesl` shaders), so what wisp reflects
+//! and what the GPU compiles never diverge, and error line numbers always match
+//! the file on disk.
 
 use naga::front::wgsl;
 use naga::valid::{Capabilities, ModuleInfo, ValidationFlags, Validator};
@@ -21,11 +22,6 @@ pub struct ReflectedModule {
 
 #[derive(Debug, Error)]
 pub enum ReflectError {
-    #[error(
-        "preprocessor directive on line {line}: wisp shaders are plain WGSL \
-         (`#import` and friends are not supported)"
-    )]
-    Directive { line: usize },
     #[error("failed to parse WGSL:\n{0}")]
     Parse(String),
     #[error("invalid WGSL:\n{0}")]
@@ -34,9 +30,6 @@ pub enum ReflectError {
 
 /// Parse and validate wisp WGSL source.
 pub fn parse_and_validate(source: &str) -> Result<ReflectedModule, ReflectError> {
-    if let Some(line) = find_directive(source) {
-        return Err(ReflectError::Directive { line });
-    }
     let options = wgsl::Options {
         parse_doc_comments: true,
         capabilities: Capabilities::all(),
@@ -52,26 +45,9 @@ pub fn parse_and_validate(source: &str) -> Result<ReflectedModule, ReflectError>
     Ok(ReflectedModule { module, info })
 }
 
-/// The 1-based line number of the first naga_oil-style `#` directive, if any.
-pub fn find_directive(source: &str) -> Option<usize> {
-    source
-        .lines()
-        .position(|l| l.trim_start().starts_with('#'))
-        .map(|i| i + 1)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn rejects_directives() {
-        let src = "// fine\n#import bevy_pbr::forward_io\n";
-        assert!(matches!(
-            parse_and_validate(src),
-            Err(ReflectError::Directive { line: 2 })
-        ));
-    }
 
     #[test]
     fn parse_error_includes_location() {

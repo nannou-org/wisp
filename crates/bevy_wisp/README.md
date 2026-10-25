@@ -184,20 +184,23 @@ Compute targets are never cleared.
 Wisp validates at load time with the same `naga` that compiles the shader, so
 errors carry exact source spans. Failed loads never replace the loaded asset -
 the last working shader keeps rendering while `WispErrors` (and the `ui`
-panel) show what went wrong. naga_oil directives (`#import` etc.) are
-rejected: wisp shaders are plain WGSL.
+panel) show what went wrong. Wisp shaders are plain WGSL: bevy hands them to
+wgpu untouched (WESL imports and `@if` apply only to `.wesl` shaders), so what
+wisp reflects is exactly what the GPU compiles.
 
 ## Cargo features
 
-- `ui` - auto-generated egui control panel (requires `bevy_egui`'s
-  `EguiPlugin` in single-pass mode; see the `ui` example).
+- `ui` - auto-generated egui control panel, drawn in bevy_egui's
+  `EguiPrimaryContextPass` (requires `bevy_egui`'s `EguiPlugin`; see the `ui`
+  example).
 - `audio` - waveform/FFT textures fed from the `WispAudio` resource.
 
 ## Bevy compatibility
 
 | bevy | bevy_wisp |
 |------|-----------|
-| 0.19 | 0.1       |
+| 0.20 | 0.3       |
+| 0.19 | 0.1, 0.2  |
 
 ## Relation to ISF and nannou
 

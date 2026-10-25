@@ -10,6 +10,7 @@ use crate::schema::ParamType;
 use bevy_ecs::prelude::*;
 use bevy_input::prelude::{ButtonInput, MouseButton};
 use bevy_math::{Vec2, Vec4};
+use bevy_render::RenderApp;
 use bevy_render::extract_resource::ExtractResource;
 use bevy_time::prelude::Time;
 use bevy_window::{PrimaryWindow, Window};
@@ -60,6 +61,7 @@ pub struct GlobalsValues {
 /// for rendering. Per-pass values (resolution, pass index) are filled in at render
 /// time via [`FrameGlobals::values`].
 #[derive(Resource, ExtractResource, Clone, Copy, Debug, Default)]
+#[extract_app(RenderApp)]
 pub struct FrameGlobals {
     pub time: f32,
     pub time_delta: f32,

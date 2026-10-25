@@ -15,6 +15,7 @@ use bevy_ecs::prelude::*;
 use bevy_image::prelude::Image;
 use bevy_log::warn_once;
 use bevy_math::UVec2;
+use bevy_render::RenderApp;
 use bevy_render::extract_component::ExtractComponent;
 use bevy_render::render_resource::{Extent3d, TextureUsages};
 use bevy_render::renderer::RenderAdapter;
@@ -24,6 +25,7 @@ use bevy_window::{PrimaryWindow, Window, WindowRef};
 /// The intermediate target images for a wisp camera, parallel to the schema's
 /// passes (`None` for the final pass).
 #[derive(Component, ExtractComponent, Clone, Debug, Default)]
+#[extract_app(RenderApp)]
 pub struct WispPassTargets(pub Vec<Option<PassTarget>>);
 
 #[derive(Clone, Debug)]

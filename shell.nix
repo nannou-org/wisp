@@ -29,7 +29,7 @@
 , wayland
 }:
 let
-  runtimeLibs = lib.optionals stdenv.isLinux [
+  runtimeLibs = lib.optionals stdenv.hostPlatform.isLinux [
     alsa-lib
     fontconfig
     libx11
@@ -60,7 +60,7 @@ mkShell {
     wasm-bindgen-cli
   ] ++ runtimeLibs;
 
-  env = lib.optionalAttrs stdenv.isLinux {
+  env = lib.optionalAttrs stdenv.hostPlatform.isLinux {
     # wgpu/winit dlopen their backends at run time.
     LD_LIBRARY_PATH = lib.makeLibraryPath runtimeLibs;
   };

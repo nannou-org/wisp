@@ -205,6 +205,7 @@ impl SpecializedRenderPipeline for WispPipelines {
                 shader: key.shader,
                 shader_defs: vec![],
                 entry_point: Some(key.entry.into()),
+                constants: vec![],
                 targets: vec![Some(ColorTargetState {
                     format: key.format,
                     blend: None,
@@ -235,6 +236,7 @@ impl SpecializedComputePipeline for WispPipelines {
             shader_defs: vec![],
             entry_point: Some(key.entry.into()),
             zero_initialize_workgroup_memory: false,
+            constants: vec![],
         }
     }
 }
